@@ -22,7 +22,7 @@ describe('data import API', () => {
   it('publishes templates for importable entities', async () => {
     const result = await request(app).get('/api/imports/templates').set('Authorization', `Bearer ${token}`);
     expect(result.status).toBe(200);
-    expect(result.body.data.map((t: { entity: string }) => t.entity).sort()).toEqual(['customers', 'products']);
+    expect(result.body.data.map((t: { entity: string }) => t.entity).sort()).toEqual(['customers', 'market-prices', 'products']);
     expect(result.body.data[0].example).toContain('code,name');
   });
 
@@ -69,6 +69,40 @@ describe('data import API', () => {
     expect(result.body.created).toBe(1);
     const customers = await request(app).get('/api/customers?pageSize=100&search=Coastal').set('Authorization', `Bearer ${token}`);
     expect(customers.body.data.some((c: { code: string }) => c.code === 'VN-006')).toBe(true);
+  });
+
+  it('reports an unknown product code for a market-price import', async () => {
+    const csv = 'productCode,marketCountry,signalDate,marketPricePerUnit\nNOPE,Vietnam,2026-07-15,1300';
+    const result = await request(app).post('/api/imports/market-prices').set('Authorization', `Bearer ${token}`).send({ csv, mode: 'validate' });
+    expect(result.body.valid).toBe(0);
+    expect(result.body.errors[0].message).toContain('NOPE');
+  });
+
+  it('applies optional-column defaults when cells are omitted', async () => {
+    const csv = 'productCode,marketCountry,signalDate,marketPricePerUnit\nH110MA,Vietnam,2026-07-15,1300';
+    const result = await request(app).post('/api/imports/market-prices').set('Authorization', `Bearer ${token}`).send({ csv, mode: 'commit' });
+    expect(result.body.created).toBe(1);
+    const prices = await request(app).get('/api/markets/prices').set('Authorization', `Bearer ${token}`);
+    const added = prices.body.data.find((p: { signalDate: string; productId: string }) => p.signalDate === '2026-07-15' && p.productId === 'product-H110MA');
+    expect(added.currency).toBe('USD'); // default applied
+    expect(added.trend).toBe('STABLE'); // default applied
+  });
+
+  it('imported price flows into the optimiser (uses the latest signal)', async () => {
+    const baseline = await request(app).post('/api/scenarios').set('Authorization', `Bearer ${token}`).send({ name: 'Before price import' });
+    const beforeRun = await request(app).post(`/api/scenarios/${baseline.body.id}/run`).set('Authorization', `Bearer ${token}`);
+    const beforeRec = (beforeRun.body.recommendations as Array<{ product: string; market: string; price: number }>).find(r => r.product.includes('F7000') && r.market === 'Vietnam');
+    expect(beforeRec).toBeTruthy();
+
+    // Import a much higher, more recent price for F7000 in Vietnam.
+    await request(app).post('/api/imports/market-prices').set('Authorization', `Bearer ${token}`)
+      .send({ csv: 'productCode,marketCountry,signalDate,marketPricePerUnit,trend,percentageChange\nF7000,Vietnam,2026-08-01,1850,UP,30', mode: 'commit' });
+
+    const after = await request(app).post('/api/scenarios').set('Authorization', `Bearer ${token}`).send({ name: 'After price import' });
+    const afterRun = await request(app).post(`/api/scenarios/${after.body.id}/run`).set('Authorization', `Bearer ${token}`);
+    const afterRec = (afterRun.body.recommendations as Array<{ product: string; market: string; price: number }>).find(r => r.product.includes('F7000') && r.market === 'Vietnam');
+    expect(afterRec!.price).toBeCloseTo(1850, 0);
+    expect(afterRec!.price).toBeGreaterThan(beforeRec!.price);
   });
 
   it('blocks executive viewers from importing', async () => {

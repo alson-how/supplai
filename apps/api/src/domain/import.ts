@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Row schemas coerce the string cells a CSV produces into typed values; the
 // import service resolves references (e.g. market country) and persists.
 
-export type ImportEntity = 'products' | 'customers';
+export type ImportEntity = 'products' | 'customers' | 'market-prices';
 
 // Minimal RFC-4180-style CSV parser: handles quoted fields, embedded commas and
 // newlines, and doubled quotes. Returns one keyed object per data row.
@@ -72,6 +72,19 @@ export const customerRowSchema = z.object({
 });
 export type CustomerRow = z.infer<typeof customerRowSchema>;
 
+export const marketPriceRowSchema = z.object({
+  productCode: z.string().trim().min(2).max(30),
+  marketCountry: z.string().trim().min(2),
+  signalDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a date in YYYY-MM-DD form'),
+  marketPricePerUnit: z.coerce.number().positive(),
+  currency: z.string().trim().length(3).default('USD'),
+  source: z.string().trim().min(2).default('Imported'),
+  reliabilityScore: z.coerce.number().min(0).max(1).default(0.9),
+  trend: z.enum(['UP', 'DOWN', 'STABLE']).default('STABLE'),
+  percentageChange: z.coerce.number().default(0),
+});
+export type MarketPriceRow = z.infer<typeof marketPriceRowSchema>;
+
 export interface ImportEntityMeta { entity: ImportEntity; label: string; schema: z.ZodTypeAny; headers: string[]; example: string }
 
 export const IMPORT_ENTITIES: Record<ImportEntity, ImportEntityMeta> = {
@@ -97,8 +110,19 @@ export const IMPORT_ENTITIES: Record<ImportEntity, ImportEntityMeta> = {
       'TH-006,Thailand Precision Mould,Thailand,MID_MARKET,Manufacturing,300000,50000,74,false,0.28,0.92,ACTIVE',
     ].join('\n'),
   },
+  'market-prices': {
+    entity: 'market-prices',
+    label: 'Market prices',
+    schema: marketPriceRowSchema,
+    headers: ['productCode', 'marketCountry', 'signalDate', 'marketPricePerUnit', 'currency', 'source', 'reliabilityScore', 'trend', 'percentageChange'],
+    example: [
+      'productCode,marketCountry,signalDate,marketPricePerUnit,currency,source,reliabilityScore,trend,percentageChange',
+      'H110MA,Vietnam,2026-07-15,1310,USD,SEA CFR (proxy),0.9,UP,4.2',
+      'F7000,Vietnam,2026-07-15,1440,USD,SEA CFR (proxy),0.9,UP,3.1',
+    ].join('\n'),
+  },
 };
 
 export function isImportEntity(value: string): value is ImportEntity {
-  return value === 'products' || value === 'customers';
+  return value === 'products' || value === 'customers' || value === 'market-prices';
 }

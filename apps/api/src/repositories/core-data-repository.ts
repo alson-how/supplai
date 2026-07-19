@@ -19,9 +19,10 @@ export interface CoreDataRepository {
   createProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<Product>;
   updateProduct(organisationId: string, id: string, input: Partial<Omit<Product, 'id' | 'organisationId'>>): Promise<Product | undefined>;
   deleteProduct(organisationId: string, id: string): Promise<boolean>;
-  // Upsert by natural key (code). Returns whether a row was created or updated.
+  // Upsert by natural key. Returns whether a row was created or updated.
   upsertProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
   upsertCustomer(organisationId: string, input: Omit<Customer, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
+  upsertMarketPrice(organisationId: string, input: Omit<MarketPriceSignal, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
   createAudit(organisationId: string, userId: string, entityType: string, entityId: string, action: string, before: unknown, after: unknown): Promise<void>;
   auditEvents(organisationId: string): Promise<object[]>;
 }

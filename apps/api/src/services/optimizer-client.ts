@@ -81,8 +81,11 @@ function unitMargin(o: OptimizerOpportunity): number {
   return o.price - o.production_cost - o.logistics_cost - o.inventory_cost - o.risk_cost;
 }
 function objectiveCoefficient(o: OptimizerOpportunity, weights: OptimizerWeights): number {
-  const margin = o.price ? unitMargin(o) / o.price : 0;
-  return weights.margin * margin + weights.strategic * (o.strategic ? 1 : 0) - weights.risk * o.risk_cost;
+  // Mirror the OR-Tools objective exactly: per-unit net margin in currency,
+  // plus a strategic bonus, minus a risk penalty. Using the currency margin (not
+  // the ratio) keeps the heuristic consistent with the solver and makes a higher
+  // price rank an opportunity higher, as expected.
+  return weights.margin * unitMargin(o) + weights.strategic * (o.strategic ? 1 : 0) - weights.risk * o.risk_cost;
 }
 
 // Deterministic greedy allocator used when the OR-Tools service is not

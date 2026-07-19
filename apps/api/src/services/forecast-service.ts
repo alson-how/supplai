@@ -1,5 +1,5 @@
 import type { CoreDataRepository } from '../repositories/core-data-repository.js';
-import type { Customer, Market, MarketPriceSignal, Product } from '../domain/core-data.js';
+import { latestPriceSignal, type Customer, type Market, type MarketPriceSignal, type Product } from '../domain/core-data.js';
 import { forecast, forecastAccuracy, pointForecast, type ForecastMethod, type ForecastResult } from '../domain/forecasting.js';
 
 // The POC has no historical sales table yet, so we synthesise a deterministic
@@ -57,7 +57,7 @@ export class ForecastService {
   }
 
   private marketTrendPercent(reference: ForecastReference, productId: string, marketId: string): number {
-    const signal = reference.prices.find(price => price.productId === productId && price.marketId === marketId);
+    const signal = latestPriceSignal(reference.prices, productId, marketId);
     if (!signal) return 0;
     const direction = signal.trend === 'UP' ? 1 : signal.trend === 'DOWN' ? -1 : 0;
     return direction * Math.abs(signal.percentageChange);

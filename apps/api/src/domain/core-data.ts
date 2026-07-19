@@ -127,6 +127,14 @@ export function availableCredit(customer: Customer): number {
   return Math.max(0, customer.creditLimit - customer.outstandingCredit);
 }
 
+// The current price for a product in a market is the signal with the most recent
+// date, so importing a newer price supersedes the seeded one.
+export function latestPriceSignal(prices: MarketPriceSignal[], productId: string, marketId: string): MarketPriceSignal | undefined {
+  return prices
+    .filter(price => price.productId === productId && price.marketId === marketId)
+    .sort((a, b) => b.signalDate.localeCompare(a.signalDate))[0];
+}
+
 export function logisticsEstimate(route: LogisticsRoute, quantity: number, fuelSurchargePercent = 0) {
   const freight = route.freightCostPerUnit * (1 + fuelSurchargePercent / 100);
   const costPerUnit = freight + route.handlingCostPerUnit + route.carbonCostPerUnit;

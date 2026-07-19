@@ -6,6 +6,7 @@
 5. Clone Baseline, apply “Vietnam price drops 8%”, and run. Compare revenue, margin, fulfilment, and customers reprioritised.
 6. Expand a recommendation to read its explanation, then approve, modify (with a new quantity), or reject it with a reason — each decision is audited. Modified quantities rescale revenue and margin at the unchanged per-unit economics.
 7. Open **Data import**, load the customer example, Validate (dry run), then Import. Re-run a scenario and show the newly imported customer now receiving allocations — import flows straight into forecasting and the optimiser.
+8. Import **market prices** from `docs/sample-data/market-prices-sea-2026.csv` (real 2026 Southeast-Asia CFR levels). Re-run a scenario and show the plan shift toward the now higher-value grades (HDPE film rises to the top), with expected revenue and margin recalculated on real market prices.
 
 ## API walkthrough of a scenario run
 

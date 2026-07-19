@@ -77,6 +77,13 @@ export class PrismaCoreDataRepository implements CoreDataRepository {
     return 'created';
   }
 
+  async upsertMarketPrice(organisationId: string, input: Omit<MarketPriceSignal, 'id' | 'organisationId'>): Promise<UpsertOutcome> {
+    const existing = await this.db.marketPriceSignal.findFirst({ where: { organisationId, productId: input.productId, marketId: input.marketId, signalDate: input.signalDate } });
+    if (existing) { await this.db.marketPriceSignal.update({ where: { id: existing.id }, data: input }); return 'updated'; }
+    await this.db.marketPriceSignal.create({ data: { ...input, id: `price-${input.productId}-${input.marketId}-${input.signalDate}`, organisationId } });
+    return 'created';
+  }
+
   async createAudit(organisationId: string, userId: string, entityType: string, entityId: string, action: string, before: unknown, after: unknown): Promise<void> {
     await this.db.auditLog.create({ data: {
       id: `audit-${randomUUID()}`, organisationId, userId, entityType, entityId, action,

@@ -29,9 +29,12 @@ SupplAI is a prescriptive PE/PP supply-decision platform. A planner can:
    rescales revenue and margin at unchanged unit economics. Every decision is
    audited.
 8. **Compare two scenario runs** (revenue, margin, allocated volume, count).
-9. **Import operational data** — products and customers from CSV with a
-   validate (dry-run) / commit flow, per-row error reporting, and upsert by
-   code. Imported records immediately feed forecasting and the optimiser.
+9. **Import operational data** — products, customers, and market prices from CSV
+   with a validate (dry-run) / commit flow, per-row error reporting, and upsert
+   by natural key. Imported records immediately feed forecasting and the
+   optimiser; importing real 2026 market prices shifts the plan toward the
+   genuinely higher-value grades (a real-data sample ships in
+   `docs/sample-data/`).
 10. **Verify the audit trail** of runs, decisions and imports.
 
 The **LLM boundary never calculates or mutates allocations** — the OR-Tools
@@ -84,9 +87,8 @@ all use `Demo@123`.
    `Decimal` with mappers.
 3. **Express Swagger/OpenAPI** — publish live API docs (the optimiser already
    does via `/docs`).
-4. **More importable entities** — market prices and inventory positions
-   (market-price import is the most demo-worthy: import prices → re-run →
-   allocations shift).
+4. **More importable entities** — inventory positions and production plans
+   (products, customers and market prices are done).
 5. **Auth hardening for production** — rotating refresh tokens, external secret
    manager, transactional multi-record decisions.
 6. **Historical sales** — replace the synthesised forecast history with a real

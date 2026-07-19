@@ -31,7 +31,7 @@ All `/api` routes except login require `Authorization: Bearer <token>`. The orga
 | Scenarios | `PATCH /api/scenarios/:id/recommendations/:recId/decision` | Approve, modify, or reject a recommendation; audited (planner roles) |
 | Scenarios | `GET /api/scenarios/compare` | Delta between two runs. Query: `baselineId`, `candidateId` |
 | Imports | `GET /api/imports/templates` | Header list and a ready-to-edit CSV example per importable entity |
-| Imports | `POST /api/imports/:entity` | Import `products` or `customers` from CSV; `mode` = `validate` (dry run) or `commit` (planner roles) |
+| Imports | `POST /api/imports/:entity` | Import `products`, `customers`, or `market-prices` from CSV; `mode` = `validate` (dry run) or `commit` (planner roles) |
 
 List responses use `{ data, page, pageSize, total, totalPages }` where pagination applies. Validation errors use `{ error: { code, message, issues } }`.
 
@@ -45,7 +45,7 @@ Forecasts are deterministic and key-free. `domain/forecasting.ts` implements mov
 
 ## Data import
 
-`POST /api/imports/:entity` accepts a CSV body (`{ csv, mode }`) and returns a per-row report — `totalRows`, `valid`, `invalid`, `created`, `updated`, and `errors[{ row, field, message }]`. `mode: "validate"` is a dry run that persists nothing; `mode: "commit"` upserts each valid row by its natural key (`code`) and audits the import. Rows are validated with Zod (numeric/boolean cells coerced from strings), duplicate codes within a file are rejected, and customer rows resolve `marketCountry` to a market. Imported records are immediately visible to forecasting and the optimiser. Supported entities: `products`, `customers` (see `GET /api/imports/templates` for columns and examples).
+`POST /api/imports/:entity` accepts a CSV body (`{ csv, mode }`) and returns a per-row report — `totalRows`, `valid`, `invalid`, `created`, `updated`, and `errors[{ row, field, message }]`. `mode: "validate"` is a dry run that persists nothing; `mode: "commit"` upserts each valid row by its natural key (`code`) and audits the import. Rows are validated with Zod (numeric/boolean cells coerced from strings), duplicate codes within a file are rejected, and customer rows resolve `marketCountry` to a market. Imported records are immediately visible to forecasting and the optimiser. Supported entities: `products`, `customers`, and `market-prices` (see `GET /api/imports/templates` for columns and examples). Customer rows resolve `marketCountry`, and market-price rows resolve `productCode` + `marketCountry`, to the referenced records. A market price is keyed by product, market and `signalDate`; the optimiser uses the most recent signal, so importing a newer price supersedes the seeded one. A real-data sample lives at `docs/sample-data/market-prices-sea-2026.csv` (2026 Southeast-Asia CFR levels from public reporting, used as a proxy).
 
 ## Persistence
 

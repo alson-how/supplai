@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CoreDataRepository } from '../repositories/core-data-repository.js';
 import type { ScenarioRepository } from '../repositories/scenario-repository.js';
-import { availableCredit, availableToPromise, isRouteFeasible, logisticsEstimate, type Customer, type InventoryPosition, type LogisticsRoute, type Market, type MarketSignal, type Product, type ProductionPlan } from '../domain/core-data.js';
+import { availableCredit, availableToPromise, isRouteFeasible, latestPriceSignal, logisticsEstimate, type Customer, type InventoryPosition, type LogisticsRoute, type Market, type MarketSignal, type Product, type ProductionPlan } from '../domain/core-data.js';
 import { applyAssumptions, compareScenarios, decideRecommendation, defaultAssumptions, weightsFromAssumptions, type RecommendationDecisionInput, type Scenario, type ScenarioAssumptions, type ScenarioComparison, type ScenarioRecommendation, type ScenarioRunSummary } from '../domain/scenarios.js';
 import { buildAllocationProblem, type AllocationResult, type OptimizerClient, type OptimizerOpportunity } from './optimizer-client.js';
 import { ForecastService, type ForecastReference } from './forecast-service.js';
@@ -190,7 +190,7 @@ export class ScenarioService {
         if (!market) continue;
         const route = bestRouteToMarket(routes, market.id);
         if (!route) continue; // cannot serve this market at all
-        const price = reference.prices.find(signal => signal.productId === product.id && signal.marketId === market.id);
+        const price = latestPriceSignal(reference.prices, product.id, market.id);
         if (!price) continue;
 
         const forecast = this.forecasts.forecastForCustomer(reference, product, customer, market, assumptions.forecastMethod);
