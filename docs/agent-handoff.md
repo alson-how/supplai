@@ -31,6 +31,21 @@ The target outcome remains a production-quality proof of concept where users can
 11. Verify audit trail entries.
 12. Import sample operational data.
 
+## Phase 3 status (implemented)
+
+**Phase 3: Forecasting and optimisation integration is complete** in the in-memory POC:
+
+- Deterministic forecasting domain (`apps/api/src/domain/forecasting.ts`) with moving average, weighted moving average, exponential smoothing, seasonal trend, MAPE-based accuracy, and a low-confidence fallback chain.
+- `ForecastService` synthesising reproducible seasonal history from seed data, exposed via `GET /api/demand/forecast` and `GET /api/demand/summary`.
+- Typed optimiser client (`services/optimizer-client.ts`): `HttpOptimizerClient` for the FastAPI/OR-Tools service, deterministic `LocalOptimizerClient` fallback, `FallbackOptimizerClient`, `buildAllocationProblem` request mapper.
+- Scenario domain (`domain/scenarios.ts`): assumption schema with defaults, `applyAssumptions`, `weightsFromAssumptions`, `compareScenarios`.
+- Scenario repository + in-memory implementation, and `ScenarioService` orchestrating create/clone/update/run/compare, the domain→optimiser request mapping, and optimiser→recommendation response mapping.
+- Recommendation explanation service (deterministic, key-free) attached to every generated recommendation.
+- Routes wired through `scenarioRouter` and `demandRouter`; scenario runs are audited.
+- Tests: 36 passing across forecasting, scenarios, optimiser client/mappers, and full scenario run/persistence/compare via the app. Verified end-to-end against the live OR-Tools service (`engine: or-tools`, `OPTIMAL`) and the fallback (`engine: local-heuristic`).
+
+Still outstanding after Phase 3: Prisma-backed persistence and migrations, the interactive scenario UI (web is still static), import workflows, Express Swagger, and Playwright e2e.
+
 ## What has been implemented
 
 ### Monorepo and environment
@@ -268,7 +283,7 @@ Original requested implementation phases:
 2. **Core data modules** — proof-of-concept complete with in-memory storage.
    - Products, customers, markets, inventory, production, logistics, and market-pricing routes exist.
    - Persistence and full CRUD completeness still need strengthening.
-3. **Forecasting and optimisation** — next recommended phase.
+3. **Forecasting and optimisation** — complete in the in-memory POC (see Phase 3 status above).
 4. **User experience** — mostly remaining.
    - Only a static executive UI concept exists.
 5. **AI explanations** — mostly remaining.
