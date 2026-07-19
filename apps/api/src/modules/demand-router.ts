@@ -18,30 +18,31 @@ export function demandRouter(repository: CoreDataRepository) {
   const service = new ForecastService(repository);
   router.use(authenticate);
 
-  router.get('/demand/summary', (req: AuthenticatedRequest, res) => {
+  router.get('/demand/summary', async (req: AuthenticatedRequest, res) => {
     const parsed = querySchema.safeParse(req.query);
     if (!parsed.success) return invalid(res, parsed.error);
-    return res.json(service.summary(organisation(req), parsed.data.method as ForecastMethod | undefined));
+    const reference = await service.reference(organisation(req));
+    return res.json(service.summary(reference, parsed.data.method as ForecastMethod | undefined));
   });
 
-  router.get('/demand/forecast', (req: AuthenticatedRequest, res) => {
+  router.get('/demand/forecast', async (req: AuthenticatedRequest, res) => {
     const parsed = querySchema.safeParse(req.query);
     if (!parsed.success) return invalid(res, parsed.error);
-    const org = organisation(req);
     const { productId, marketId, customerId, method } = parsed.data;
+    const reference = await service.reference(organisation(req));
 
     // Single product/customer lens when a customer is supplied.
     if (customerId) {
-      const customer = repository.customers(org).find(record => record.id === customerId);
+      const customer = reference.customers.find(record => record.id === customerId);
       if (!customer) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Customer not found' } });
-      const product = repository.products(org).find(record => record.id === productId);
+      const product = reference.products.find(record => record.id === productId);
       if (!product) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'productId is required and must reference a product' } });
-      const market = repository.markets(org).find(record => record.id === customer.marketId);
+      const market = reference.markets.find(record => record.id === customer.marketId);
       if (!market) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Market not found for customer' } });
-      return res.json({ data: service.forecastForCustomer(org, product, customer, market, method as ForecastMethod | undefined) });
+      return res.json({ data: service.forecastForCustomer(reference, product, customer, market, method as ForecastMethod | undefined) });
     }
 
-    let data = service.marketForecasts(org, method as ForecastMethod | undefined);
+    let data = service.marketForecasts(reference, method as ForecastMethod | undefined);
     if (productId) data = data.filter(item => item.productId === productId);
     if (marketId) data = data.filter(item => item.marketId === marketId);
     return res.json({ data, total: data.length });

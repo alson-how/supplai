@@ -1,5 +1,5 @@
 import type { CoreDataRepository } from '../repositories/core-data-repository.js';
-import type { Customer, Market, Product } from '../domain/core-data.js';
+import type { Customer, Market, MarketPriceSignal, Product } from '../domain/core-data.js';
 import { forecast, forecastAccuracy, pointForecast, type ForecastMethod, type ForecastResult } from '../domain/forecasting.js';
 
 // The POC has no historical sales table yet, so we synthesise a deterministic
@@ -7,6 +7,10 @@ import { forecast, forecastAccuracy, pointForecast, type ForecastMethod, type Fo
 // always yields identical series, which keeps forecasts and the downstream
 // optimisation reproducible. When a real sales repository is added, only
 // `demandHistory` needs to change.
+//
+// Reference data is loaded once into a ForecastReference snapshot so a
+// database-backed repository is queried a fixed number of times per request
+// rather than once per product/market pair.
 
 const SEASON_LENGTH = 4;
 const HISTORY_PERIODS = 12;
@@ -21,32 +25,49 @@ export interface DemandForecast extends ForecastResult {
   backtestAccuracy: number;
 }
 
+export interface ForecastReference {
+  products: Product[];
+  markets: Market[];
+  customers: Customer[];
+  prices: MarketPriceSignal[];
+}
+
 export class ForecastService {
   constructor(private readonly repository: CoreDataRepository) {}
 
-  private productIndex(organisationId: string, productId: string): number {
-    return Math.max(0, this.repository.products(organisationId).findIndex(product => product.id === productId));
+  async reference(organisationId: string): Promise<ForecastReference> {
+    const [products, markets, customers, prices] = await Promise.all([
+      this.repository.products(organisationId),
+      this.repository.markets(organisationId),
+      this.repository.customers(organisationId),
+      this.repository.marketPrices(organisationId),
+    ]);
+    return { products, markets, customers, prices };
   }
 
-  private baseMarketDemand(organisationId: string, product: Product, market: Market): number {
-    const index = this.productIndex(organisationId, product.id);
+  private productIndex(reference: ForecastReference, productId: string): number {
+    return Math.max(0, reference.products.findIndex(product => product.id === productId));
+  }
+
+  private baseMarketDemand(reference: ForecastReference, product: Product, market: Market): number {
+    const index = this.productIndex(reference, product.id);
     const productWeight = 1 - index * 0.06; // earlier catalogue grades move larger volumes
     const marketWeight = 0.6 + market.strategicPriority * 0.6;
     return Math.max(40, 480 * productWeight * marketWeight);
   }
 
-  private marketTrendPercent(organisationId: string, productId: string, marketId: string): number {
-    const signal = this.repository.marketPrices(organisationId).find(price => price.productId === productId && price.marketId === marketId);
+  private marketTrendPercent(reference: ForecastReference, productId: string, marketId: string): number {
+    const signal = reference.prices.find(price => price.productId === productId && price.marketId === marketId);
     if (!signal) return 0;
     const direction = signal.trend === 'UP' ? 1 : signal.trend === 'DOWN' ? -1 : 0;
     return direction * Math.abs(signal.percentageChange);
   }
 
   // Deterministic seasonal series ending at the current period.
-  demandHistory(organisationId: string, product: Product, market: Market, scale = 1): number[] {
-    const base = this.baseMarketDemand(organisationId, product, market) * scale;
-    const index = this.productIndex(organisationId, product.id);
-    const trendPerPeriod = this.marketTrendPercent(organisationId, product.id, market.id) / 100 / HISTORY_PERIODS;
+  demandHistory(reference: ForecastReference, product: Product, market: Market, scale = 1): number[] {
+    const base = this.baseMarketDemand(reference, product, market) * scale;
+    const index = this.productIndex(reference, product.id);
+    const trendPerPeriod = this.marketTrendPercent(reference, product.id, market.id) / 100 / HISTORY_PERIODS;
     return Array.from({ length: HISTORY_PERIODS }, (_, t) => {
       const seasonal = 1 + 0.12 * Math.sin((t / SEASON_LENGTH) * 2 * Math.PI + index);
       const growth = 1 + trendPerPeriod * t;
@@ -54,38 +75,37 @@ export class ForecastService {
     });
   }
 
-  private fallbackContext(organisationId: string, product: Product, market: Market, segment: string) {
-    const catalogue = this.repository.products(organisationId).filter(candidate => candidate.category === product.category);
+  private fallbackContext(reference: ForecastReference, product: Product, market: Market, segment: string) {
+    const catalogue = reference.products.filter(candidate => candidate.category === product.category);
     const categoryDemand = catalogue.length
-      ? catalogue.reduce((sum, candidate) => sum + this.baseMarketDemand(organisationId, candidate, market), 0) / catalogue.length
-      : this.baseMarketDemand(organisationId, product, market);
-    return { categoryDemand, marketTrendPercent: this.marketTrendPercent(organisationId, product.id, market.id), segmentMultiplier: SEGMENT_MULTIPLIER[segment] ?? 1 };
+      ? catalogue.reduce((sum, candidate) => sum + this.baseMarketDemand(reference, candidate, market), 0) / catalogue.length
+      : this.baseMarketDemand(reference, product, market);
+    return { categoryDemand, marketTrendPercent: this.marketTrendPercent(reference, product.id, market.id), segmentMultiplier: SEGMENT_MULTIPLIER[segment] ?? 1 };
   }
 
-  forecastForMarket(organisationId: string, product: Product, market: Market, method?: ForecastMethod): DemandForecast {
-    const history = this.demandHistory(organisationId, product, market);
-    const result = forecast(history, { method, fallback: this.fallbackContext(organisationId, product, market, 'MID_MARKET') });
+  forecastForMarket(reference: ForecastReference, product: Product, market: Market, method?: ForecastMethod): DemandForecast {
+    const history = this.demandHistory(reference, product, market);
+    const result = forecast(history, { method, fallback: this.fallbackContext(reference, product, market, 'MID_MARKET') });
     return { ...result, productId: product.id, marketId: market.id, forecastPeriod: nextPeriod(), history, backtestAccuracy: backtest(history, result.method) };
   }
 
-  forecastForCustomer(organisationId: string, product: Product, customer: Customer, market: Market, method?: ForecastMethod): DemandForecast {
-    const share = customerShare(this.repository.customers(organisationId).filter(record => record.marketId === market.id), customer);
-    const history = this.demandHistory(organisationId, product, market, share);
-    const result = forecast(history, { method, fallback: this.fallbackContext(organisationId, product, market, customer.segment) });
+  forecastForCustomer(reference: ForecastReference, product: Product, customer: Customer, market: Market, method?: ForecastMethod): DemandForecast {
+    const share = customerShare(reference.customers.filter(record => record.marketId === market.id), customer);
+    const history = this.demandHistory(reference, product, market, share);
+    const result = forecast(history, { method, fallback: this.fallbackContext(reference, product, market, customer.segment) });
     return { ...result, productId: product.id, marketId: market.id, customerId: customer.id, forecastPeriod: nextPeriod(), history, backtestAccuracy: backtest(history, result.method) };
   }
 
   // One forecast per active product/market pairing, ranked by predicted volume.
-  marketForecasts(organisationId: string, method?: ForecastMethod): DemandForecast[] {
-    const markets = this.repository.markets(organisationId);
-    return this.repository.products(organisationId)
+  marketForecasts(reference: ForecastReference, method?: ForecastMethod): DemandForecast[] {
+    return reference.products
       .filter(product => product.status === 'ACTIVE')
-      .flatMap(product => markets.map(market => this.forecastForMarket(organisationId, product, market, method)))
+      .flatMap(product => reference.markets.map(market => this.forecastForMarket(reference, product, market, method)))
       .sort((a, b) => b.predictedQuantity - a.predictedQuantity);
   }
 
-  summary(organisationId: string, method?: ForecastMethod) {
-    const forecasts = this.marketForecasts(organisationId, method);
+  summary(reference: ForecastReference, method?: ForecastMethod) {
+    const forecasts = this.marketForecasts(reference, method);
     const totalPredicted = forecasts.reduce((sum, item) => sum + item.predictedQuantity, 0);
     const weightedAccuracy = forecasts.reduce((sum, item) => sum + item.backtestAccuracy * item.predictedQuantity, 0) / (totalPredicted || 1);
     return {

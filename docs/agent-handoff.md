@@ -44,7 +44,15 @@ The target outcome remains a production-quality proof of concept where users can
 - Routes wired through `scenarioRouter` and `demandRouter`; scenario runs are audited.
 - Tests: 36 passing across forecasting, scenarios, optimiser client/mappers, and full scenario run/persistence/compare via the app. Verified end-to-end against the live OR-Tools service (`engine: or-tools`, `OPTIMAL`) and the fallback (`engine: local-heuristic`).
 
-Still outstanding after Phase 3: Prisma-backed persistence and migrations, the interactive scenario UI (web is still static), import workflows, Express Swagger, and Playwright e2e.
+### Phase 4 status (implemented)
+
+Since Phase 3 the following also landed:
+
+- **Interactive Angular UI** wired to the API: login, executive dashboard, demand forecasts, and the scenario simulator (create/clone/assumptions/run/compare) with ranked, explained recommendations.
+- **Approve / modify / reject decision workflow** on scenario recommendations (`PATCH /api/scenarios/:id/recommendations/:recId/decision`), audited, with the modify path rescaling revenue/margin at unchanged unit economics — surfaced in the UI.
+- **Prisma-backed persistence over Postgres.** Repositories are now async with two implementations behind one interface (`DATABASE_URL` selects Prisma vs in-memory). The schema was realigned to the domain models, the initial migration is committed, a seed script and seed-if-empty startup are in place, and persistence was verified end-to-end (scenario run + decision survive an API restart).
+
+Still outstanding: import workflows, Express Swagger/OpenAPI, Playwright e2e in CI, and tightening Prisma Float columns to Decimal with mappers for financial precision.
 
 ## What has been implemented
 
@@ -294,9 +302,9 @@ Original requested implementation phases:
 ## Key risks for the next agent
 
 1. **Current implementation is still a vertical slice, not a complete production POC.** Avoid overstating completeness.
-2. **Prisma is not actually wired into the API.** The API currently uses in-memory repositories.
-3. **Web UI is static.** It does not yet call API services or implement real workflows.
-4. **Optimizer integration is not connected from the API scenario workflow.** The optimiser service exists separately.
+2. **Prisma is wired in.** The API uses Postgres via Prisma when `DATABASE_URL` is set (async repositories), and in-memory otherwise. Financial columns are Float for now — tighten to Decimal for production.
+3. **Web UI is interactive.** It calls the API for auth, dashboard, demand, and the full scenario/decision workflow.
+4. **Optimizer integration is connected.** The scenario run maps domain data → OR-Tools and back, with a deterministic local fallback.
 5. **Seed data may need normalization and expansion.** It is adequate for demo structure but not yet 100,000 historical sales records.
 6. **Tests in PR descriptions may not reflect every environment.** Always run tests in the current environment and report limitations honestly.
 7. **No paid AI dependency should be introduced.** Deterministic explanation fallback must remain first-class.

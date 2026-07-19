@@ -1,25 +1,275 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
-enum Role { ADMINISTRATOR COMMERCIAL_PLANNER SUPPLY_CHAIN_PLANNER PRODUCTION_PLANNER LOGISTICS_PLANNER EXECUTIVE_VIEWER }
-enum DecisionStatus { PENDING_REVIEW APPROVED MODIFIED REJECTED EXECUTED }
-model Organisation { id String @id @default(cuid()) name String country String baseCurrency String @default("USD") timezone String @default("Asia/Kuala_Lumpur") users User[] products Product[] markets Market[] createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
-model User { id String @id @default(cuid()) organisationId String organisation Organisation @relation(fields:[organisationId],references:[id]) name String email String @unique passwordHash String role Role status String @default("ACTIVE") decisions RecommendationDecision[] audits AuditLog[] createdAt DateTime @default(now()) updatedAt DateTime @updatedAt @@index([organisationId]) }
-model Product { id String @id @default(cuid()) organisationId String organisation Organisation @relation(fields:[organisationId],references:[id]) code String name String category String polymerType String grade String application String unitOfMeasure String @default("TONNE") productionCostPerUnit Decimal @db.Decimal(12,2) minimumOrderQuantity Decimal @db.Decimal(12,3) shelfLifeDays Int status String @default("ACTIVE") inventory InventoryPosition[] forecasts DemandForecast[] recommendations AllocationRecommendation[] @@unique([organisationId,code]) }
-model Market { id String @id @default(cuid()) organisationId String organisation Organisation @relation(fields:[organisationId],references:[id]) country String region String marketSegment String currency String riskScore Float strategicPriority Float status String @default("ACTIVE") customers Customer[] forecasts DemandForecast[] recommendations AllocationRecommendation[] @@index([organisationId,country]) }
-model Customer { id String @id @default(cuid()) organisationId String marketId String market Market @relation(fields:[marketId],references:[id]) code String name String segment String industry String creditLimit Decimal @db.Decimal(14,2) outstandingCredit Decimal @db.Decimal(14,2) priorityScore Float strategicAccount Boolean paymentRiskScore Float serviceLevelTarget Float status String @default("ACTIVE") forecasts DemandForecast[] recommendations AllocationRecommendation[] @@unique([organisationId,code]) }
-model InventoryLocation { id String @id @default(cuid()) organisationId String code String name String country String locationType String latitude Float longitude Float positions InventoryPosition[] @@unique([organisationId,code]) }
-model InventoryPosition { id String @id @default(cuid()) organisationId String productId String locationId String product Product @relation(fields:[productId],references:[id]) location InventoryLocation @relation(fields:[locationId],references:[id]) availableQuantity Decimal reservedQuantity Decimal qualityHoldQuantity Decimal expectedInboundQuantity Decimal inventoryAgeDays Int snapshotDate DateTime @@index([organisationId,productId,snapshotDate]) }
-model DemandForecast { id String @id @default(cuid()) organisationId String customerId String marketId String productId String customer Customer @relation(fields:[customerId],references:[id]) market Market @relation(fields:[marketId],references:[id]) product Product @relation(fields:[productId],references:[id]) forecastPeriod DateTime predictedQuantity Decimal lowerBound Decimal upperBound Decimal confidenceScore Float modelName String generatedAt DateTime @default(now()) @@index([organisationId,forecastPeriod]) }
-model Scenario { id String @id @default(cuid()) organisationId String name String description String scenarioType String baselineScenarioId String? status String createdBy String createdAt DateTime @default(now()) executedAt DateTime? assumptions ScenarioAssumption[] runs AllocationRun[] @@index([organisationId,status]) }
-model ScenarioAssumption { id String @id @default(cuid()) scenarioId String scenario Scenario @relation(fields:[scenarioId],references:[id],onDelete:Cascade) assumptionType String entityType String entityId String? baselineValue Decimal adjustedValue Decimal unit String notes String? }
-model AllocationRun { id String @id @default(cuid()) organisationId String scenarioId String scenario Scenario @relation(fields:[scenarioId],references:[id]) status String objectiveValue Decimal totalRevenue Decimal totalMargin Decimal logisticsCost Decimal productionCost Decimal inventoryCost Decimal riskPenalty Decimal solverStatus String executionDurationMs Int generatedAt DateTime @default(now()) recommendations AllocationRecommendation[] }
-model AllocationRecommendation { id String @id @default(cuid()) organisationId String allocationRunId String productId String customerId String marketId String allocationRun AllocationRun @relation(fields:[allocationRunId],references:[id]) product Product @relation(fields:[productId],references:[id]) customer Customer @relation(fields:[customerId],references:[id]) market Market @relation(fields:[marketId],references:[id]) recommendedQuantity Decimal recommendedPrice Decimal expectedRevenue Decimal expectedNetMargin Decimal marginPercentage Float logisticsCost Decimal leadTimeDays Int confidenceScore Float priorityRank Int feasibilityStatus String recommendationStatus DecisionStatus @default(PENDING_REVIEW) rationale String tradeOffsJson Json constraintsJson Json decisions RecommendationDecision[] @@index([organisationId,recommendationStatus]) }
-model RecommendationDecision { id String @id @default(cuid()) recommendationId String userId String recommendation AllocationRecommendation @relation(fields:[recommendationId],references:[id]) user User @relation(fields:[userId],references:[id]) decision DecisionStatus originalQuantity Decimal finalQuantity Decimal reason String comment String? decidedAt DateTime @default(now()) }
-model AuditLog { id String @id @default(cuid()) organisationId String userId String user User @relation(fields:[userId],references:[id]) entityType String entityId String action String beforeJson Json? afterJson Json? createdAt DateTime @default(now()) @@index([organisationId,createdAt]) }
-model ProductSubstitution { id String @id @default(cuid()) organisationId String sourceProductId String substituteProductId String compatibilityScore Float notes String? @@unique([organisationId,sourceProductId,substituteProductId]) }
-model ProductionFacility { id String @id @default(cuid()) organisationId String code String name String country String capacityPerPeriod Decimal status String @@unique([organisationId,code]) }
-model ProductionPlan { id String @id @default(cuid()) organisationId String facilityId String productId String planningPeriod DateTime plannedQuantity Decimal confirmedQuantity Decimal availableQuantity Decimal productionReadyDate DateTime changeoverRequired Boolean changeoverCost Decimal status String @@index([organisationId,planningPeriod]) }
-model LogisticsRoute { id String @id @default(cuid()) organisationId String originLocationId String destinationMarketId String transportMode String estimatedLeadTimeDays Int capacityPerPeriod Decimal freightCostPerUnit Decimal handlingCostPerUnit Decimal carbonCostPerUnit Decimal reliabilityScore Float active Boolean @@index([organisationId,destinationMarketId,active]) }
-model MarketPriceSignal { id String @id @default(cuid()) organisationId String productId String marketId String signalDate DateTime marketPricePerUnit Decimal currency String source String reliabilityScore Float trend String percentageChange Float @@index([organisationId,signalDate]) }
-model MarketSignal { id String @id @default(cuid()) organisationId String marketId String productId String title String signalType String summary String sentiment String impactScore Float source String observedAt DateTime @@index([organisationId,observedAt]) }
-model BusinessRule { id String @id @default(cuid()) organisationId String name String ruleType String description String configurationJson Json priority Int enabled Boolean @@index([organisationId,enabled,priority]) }
+// SupplAI persistence schema. Aligned 1:1 with the domain models in
+// src/domain so the Prisma-backed repositories map without translation.
+// Monetary and quantity fields use Float (JS number) to keep the repository
+// layer free of Decimal conversions; a production build can tighten these to
+// Decimal with explicit mappers.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMINISTRATOR
+  COMMERCIAL_PLANNER
+  SUPPLY_CHAIN_PLANNER
+  PRODUCTION_PLANNER
+  LOGISTICS_PLANNER
+  EXECUTIVE_VIEWER
+}
+
+model Organisation {
+  id           String    @id
+  name         String
+  country      String
+  baseCurrency String    @default("USD")
+  timezone     String    @default("Asia/Kuala_Lumpur")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  users        User[]
+  products     Product[]
+}
+
+model User {
+  id             String   @id
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id])
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organisationId])
+}
+
+model Product {
+  id                    String   @id
+  organisationId        String
+  organisation          Organisation @relation(fields: [organisationId], references: [id])
+  code                  String
+  name                  String
+  category              String
+  polymerType           String
+  grade                 String
+  application           String
+  unitOfMeasure         String   @default("TONNE")
+  productionCostPerUnit Float
+  minimumOrderQuantity  Float
+  shelfLifeDays         Int
+  status                String   @default("ACTIVE")
+
+  @@unique([organisationId, code])
+}
+
+model Market {
+  id                String  @id
+  organisationId    String
+  country           String
+  region            String
+  marketSegment     String
+  currency          String
+  riskScore         Float
+  strategicPriority Float
+  status            String  @default("ACTIVE")
+
+  @@index([organisationId, country])
+}
+
+model Customer {
+  id                 String  @id
+  organisationId     String
+  marketId           String
+  code               String
+  name               String
+  segment            String
+  industry           String
+  creditLimit        Float
+  outstandingCredit  Float
+  priorityScore      Float
+  strategicAccount   Boolean
+  paymentRiskScore   Float
+  serviceLevelTarget Float
+  status             String  @default("ACTIVE")
+
+  @@unique([organisationId, code])
+  @@index([organisationId, marketId])
+}
+
+model InventoryLocation {
+  id             String @id
+  organisationId String
+  code           String
+  name           String
+  country        String
+  locationType   String
+
+  @@unique([organisationId, code])
+}
+
+model InventoryPosition {
+  id                      String   @id
+  organisationId          String
+  productId               String
+  locationId              String
+  availableQuantity       Float
+  reservedQuantity        Float
+  qualityHoldQuantity     Float
+  expectedInboundQuantity Float
+  inventoryAgeDays        Int
+  snapshotDate            String
+
+  @@index([organisationId, productId])
+}
+
+model ProductionFacility {
+  id               String @id
+  organisationId   String
+  code             String
+  name             String
+  country          String
+  capacityPerPeriod Float
+  status           String
+
+  @@unique([organisationId, code])
+}
+
+model ProductionPlan {
+  id                 String  @id
+  organisationId     String
+  facilityId         String
+  productId          String
+  planningPeriod     String
+  plannedQuantity    Float
+  confirmedQuantity  Float
+  availableQuantity  Float
+  productionReadyDate String
+  changeoverRequired Boolean
+  changeoverCost     Float
+  status             String
+
+  @@index([organisationId, planningPeriod])
+}
+
+model LogisticsRoute {
+  id                   String  @id
+  organisationId       String
+  originLocationId     String
+  destinationMarketId  String
+  transportMode        String
+  estimatedLeadTimeDays Int
+  capacityPerPeriod    Float
+  freightCostPerUnit   Float
+  handlingCostPerUnit  Float
+  carbonCostPerUnit    Float
+  reliabilityScore     Float
+  active               Boolean
+
+  @@index([organisationId, destinationMarketId, active])
+}
+
+model MarketPriceSignal {
+  id                 String @id
+  organisationId     String
+  productId          String
+  marketId           String
+  signalDate         String
+  marketPricePerUnit Float
+  currency           String
+  source             String
+  reliabilityScore   Float
+  trend              String
+  percentageChange   Float
+
+  @@index([organisationId, signalDate])
+}
+
+model MarketSignal {
+  id             String @id
+  organisationId String
+  marketId       String
+  productId      String
+  title          String
+  signalType     String
+  summary        String
+  sentiment      String
+  impactScore    Float
+  source         String
+  observedAt     String
+
+  @@index([organisationId, observedAt])
+}
+
+model Scenario {
+  id                 String   @id
+  organisationId     String
+  name               String
+  description        String
+  scenarioType       String
+  baselineScenarioId String?
+  status             String
+  assumptions        Json
+  lastRun            Json?
+  createdBy          String
+  createdAt          String
+  updatedAt          String
+  executedAt         String?
+  recommendations    ScenarioRecommendation[]
+
+  @@index([organisationId, status])
+}
+
+model ScenarioRecommendation {
+  id               String   @id
+  organisationId   String
+  scenarioId       String
+  scenario         Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  runId            String
+  rank             Int
+  opportunityId    String
+  productId        String
+  customerId       String
+  marketId         String
+  product          String
+  customer         String
+  market           String
+  route            String
+  quantity         Float
+  price            Float
+  revenue          Float
+  netMargin        Float
+  marginPercent    Float
+  leadTimeDays     Int
+  confidence       Float
+  feasibility      String
+  status           String
+  rationale        String
+  explanation      String
+  constraints      Json
+  originalQuantity Float?
+  decisionReason   String?
+  decidedBy        String?
+  decidedAt        String?
+
+  @@index([organisationId, scenarioId])
+}
+
+model AuditLog {
+  id             String  @id
+  organisationId String
+  userId         String
+  entityType     String
+  entityId       String
+  action         String
+  beforeJson     Json?
+  afterJson      Json?
+  createdAt      String
+
+  @@index([organisationId, createdAt])
+}

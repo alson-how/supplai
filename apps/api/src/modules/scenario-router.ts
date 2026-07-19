@@ -24,43 +24,53 @@ export function scenarioRouter(service: ScenarioService) {
   const router = Router();
   router.use(authenticate);
 
-  router.get('/scenarios', (req: AuthenticatedRequest, res) => res.json({ data: service.list(organisation(req)) }));
+  router.get('/scenarios', async (req: AuthenticatedRequest, res, next) => {
+    try { return res.json({ data: await service.list(organisation(req)) }); } catch (error) { return next(error); }
+  });
 
-  router.post('/scenarios', authorize(...PLANNER_ROLES), (req: AuthenticatedRequest, res) => {
+  router.post('/scenarios', authorize(...PLANNER_ROLES), async (req: AuthenticatedRequest, res, next) => {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) return invalid(res, parsed.error);
-    return res.status(201).json(service.create(organisation(req), req.user!.id, parsed.data));
+    try { return res.status(201).json(await service.create(organisation(req), req.user!.id, parsed.data)); } catch (error) { return next(error); }
   });
 
   // Compare must precede /scenarios/:id so "compare" is not captured as an id.
-  router.get('/scenarios/compare', (req: AuthenticatedRequest, res) => {
+  router.get('/scenarios/compare', async (req: AuthenticatedRequest, res, next) => {
     const parsed = compareSchema.safeParse(req.query);
     if (!parsed.success) return invalid(res, parsed.error);
-    const comparison = service.compare(organisation(req), parsed.data.baselineId, parsed.data.candidateId);
-    if (!comparison) return notFound(res, 'Both baseline and candidate scenarios must exist');
-    return res.json(comparison);
+    try {
+      const comparison = await service.compare(organisation(req), parsed.data.baselineId, parsed.data.candidateId);
+      if (!comparison) return notFound(res, 'Both baseline and candidate scenarios must exist');
+      return res.json(comparison);
+    } catch (error) { return next(error); }
   });
 
-  router.get('/scenarios/:id', (req: AuthenticatedRequest, res) => {
-    const scenario = service.get(organisation(req), String(req.params.id));
-    if (!scenario) return notFound(res);
-    return res.json(scenario);
+  router.get('/scenarios/:id', async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const scenario = await service.get(organisation(req), String(req.params.id));
+      if (!scenario) return notFound(res);
+      return res.json(scenario);
+    } catch (error) { return next(error); }
   });
 
-  router.post('/scenarios/:id/clone', authorize(...PLANNER_ROLES), (req: AuthenticatedRequest, res) => {
+  router.post('/scenarios/:id/clone', authorize(...PLANNER_ROLES), async (req: AuthenticatedRequest, res, next) => {
     const parsed = cloneSchema.safeParse(req.body ?? {});
     if (!parsed.success) return invalid(res, parsed.error);
-    const scenario = service.clone(organisation(req), req.user!.id, String(req.params.id), parsed.data);
-    if (!scenario) return notFound(res);
-    return res.status(201).json(scenario);
+    try {
+      const scenario = await service.clone(organisation(req), req.user!.id, String(req.params.id), parsed.data);
+      if (!scenario) return notFound(res);
+      return res.status(201).json(scenario);
+    } catch (error) { return next(error); }
   });
 
-  router.patch('/scenarios/:id/assumptions', authorize(...PLANNER_ROLES), (req: AuthenticatedRequest, res) => {
+  router.patch('/scenarios/:id/assumptions', authorize(...PLANNER_ROLES), async (req: AuthenticatedRequest, res, next) => {
     const parsed = assumptionsSchema.safeParse(req.body);
     if (!parsed.success) return invalid(res, parsed.error);
-    const scenario = service.updateAssumptions(organisation(req), String(req.params.id), parsed.data);
-    if (!scenario) return notFound(res);
-    return res.json(scenario);
+    try {
+      const scenario = await service.updateAssumptions(organisation(req), String(req.params.id), parsed.data);
+      if (!scenario) return notFound(res);
+      return res.json(scenario);
+    } catch (error) { return next(error); }
   });
 
   router.post('/scenarios/:id/run', authorize(...PLANNER_ROLES), async (req: AuthenticatedRequest, res, next) => {
@@ -73,18 +83,23 @@ export function scenarioRouter(service: ScenarioService) {
     }
   });
 
-  router.get('/scenarios/:id/recommendations', (req: AuthenticatedRequest, res) => {
-    const scenario = service.get(organisation(req), String(req.params.id));
-    if (!scenario) return notFound(res);
-    return res.json({ data: service.recommendations(organisation(req), String(req.params.id)), total: service.recommendations(organisation(req), String(req.params.id)).length });
+  router.get('/scenarios/:id/recommendations', async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const scenario = await service.get(organisation(req), String(req.params.id));
+      if (!scenario) return notFound(res);
+      const data = await service.recommendations(organisation(req), String(req.params.id));
+      return res.json({ data, total: data.length });
+    } catch (error) { return next(error); }
   });
 
-  router.patch('/scenarios/:id/recommendations/:recId/decision', authorize(...PLANNER_ROLES), (req: AuthenticatedRequest, res) => {
+  router.patch('/scenarios/:id/recommendations/:recId/decision', authorize(...PLANNER_ROLES), async (req: AuthenticatedRequest, res, next) => {
     const parsed = decisionSchema.safeParse(req.body);
     if (!parsed.success) return invalid(res, parsed.error);
-    const updated = service.decide(organisation(req), req.user!.id, String(req.params.id), String(req.params.recId), parsed.data);
-    if (!updated) return notFound(res, 'Recommendation not found');
-    return res.json(updated);
+    try {
+      const updated = await service.decide(organisation(req), req.user!.id, String(req.params.id), String(req.params.recId), parsed.data);
+      if (!updated) return notFound(res, 'Recommendation not found');
+      return res.json(updated);
+    } catch (error) { return next(error); }
   });
 
   return router;

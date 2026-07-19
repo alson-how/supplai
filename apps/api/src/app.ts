@@ -8,6 +8,10 @@ import { demandRouter } from './modules/demand-router.js';
 import { scenarioRouter } from './modules/scenario-router.js';
 import { InMemoryCoreDataRepository } from './repositories/in-memory-core-data-repository.js';
 import { InMemoryScenarioRepository } from './repositories/in-memory-scenario-repository.js';
+import { PrismaCoreDataRepository } from './repositories/prisma-core-data-repository.js';
+import { PrismaScenarioRepository } from './repositories/prisma-scenario-repository.js';
+import type { CoreDataRepository } from './repositories/core-data-repository.js';
+import type { ScenarioRepository } from './repositories/scenario-repository.js';
 import { ScenarioService } from './services/scenario-service.js';
 import { createOptimizerClient, type OptimizerClient } from './services/optimizer-client.js';
 import { hashPassword, verifyPassword } from './security/password.js';
@@ -19,11 +23,14 @@ const recommendations=[
   {id:'rec-3',rank:3,product:'HDPE Film F7000',customer:'IndoFlex Nusantara',market:'Indonesia',quantity:260,price:1210,revenue:314600,netMargin:30100,marginPercent:9.6,confidence:.78,status:'REVIEW_REQUIRED',feasibility:'CONSTRAINT_WARNING',route:'Pasir Gudang → Jakarta',leadTimeDays:11,rationale:'Commercially attractive, but capped by available customer credit.'},
 ];
 
-export interface AppDependencies { optimizerClient?: OptimizerClient }
+export interface AppDependencies { optimizerClient?: OptimizerClient; coreDataRepository?: CoreDataRepository; scenarioRepository?: ScenarioRepository }
 
+// When DATABASE_URL is set the API is backed by Postgres via Prisma; otherwise it
+// runs on the in-memory repositories (used by tests and the key-free demo path).
 export function createApp(dependencies: AppDependencies = {}){
-  const repository=new InMemoryCoreDataRepository();
-  const scenarioRepository=new InMemoryScenarioRepository();
+  const usePrisma=!!process.env.DATABASE_URL;
+  const repository=dependencies.coreDataRepository??(usePrisma?new PrismaCoreDataRepository():new InMemoryCoreDataRepository());
+  const scenarioRepository=dependencies.scenarioRepository??(usePrisma?new PrismaScenarioRepository():new InMemoryScenarioRepository());
   const optimizerClient=dependencies.optimizerClient??createOptimizerClient();
   const scenarioService=new ScenarioService(repository,scenarioRepository,optimizerClient);
   const app=express();
@@ -36,8 +43,8 @@ export function createApp(dependencies: AppDependencies = {}){
   app.use('/api',scenarioRouter(scenarioService));
   app.get('/api/analytics/executive-summary',authenticate,(_req,res)=>res.json({expectedRevenue:4830000,expectedNetMargin:624000,marginUpliftPercent:7.4,forecastAccuracyPercent:87.2,demandFulfilmentPercent:91.6,availableInventory:6840,unallocatedInventory:910,pendingApprovals:12,revenueAtRisk:386000,onTimeFeasibilityPercent:93.1,capacityUtilisationPercent:84.7}));
   app.get('/api/recommendations',authenticate,(_req,res)=>res.json({data:recommendations,total:recommendations.length}));
-  app.patch('/api/recommendations/:id/decision',authenticate,(req:AuthenticatedRequest,res)=>{const parsed=z.object({decision:z.enum(['APPROVED','MODIFIED','REJECTED']),finalQuantity:z.number().nonnegative().optional(),reason:z.string().min(3)}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:{code:'VALIDATION_ERROR',issues:parsed.error.flatten()}});const item=recommendations.find(record=>record.id===req.params.id);if(!item)return res.status(404).json({error:{code:'NOT_FOUND',message:'Recommendation not found'}});const before={...item};item.status=parsed.data.decision;if(parsed.data.finalQuantity!==undefined){item.quantity=parsed.data.finalQuantity;item.revenue=item.quantity*item.price;}repository.createAudit(req.user!.organisationId,req.user!.id,'AllocationRecommendation',item.id,parsed.data.decision,before,item);return res.json(item);});
-  app.get('/api/audit',authenticate,(req:AuthenticatedRequest,res)=>res.json({data:repository.auditEvents(req.user!.organisationId),total:repository.auditEvents(req.user!.organisationId).length}));
+  app.patch('/api/recommendations/:id/decision',authenticate,async(req:AuthenticatedRequest,res,next)=>{const parsed=z.object({decision:z.enum(['APPROVED','MODIFIED','REJECTED']),finalQuantity:z.number().nonnegative().optional(),reason:z.string().min(3)}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:{code:'VALIDATION_ERROR',issues:parsed.error.flatten()}});const item=recommendations.find(record=>record.id===req.params.id);if(!item)return res.status(404).json({error:{code:'NOT_FOUND',message:'Recommendation not found'}});const before={...item};item.status=parsed.data.decision;if(parsed.data.finalQuantity!==undefined){item.quantity=parsed.data.finalQuantity;item.revenue=item.quantity*item.price;}try{await repository.createAudit(req.user!.organisationId,req.user!.id,'AllocationRecommendation',item.id,parsed.data.decision,before,item);}catch(error){return next(error);}return res.json(item);});
+  app.get('/api/audit',authenticate,async(req:AuthenticatedRequest,res,next)=>{try{const data=await repository.auditEvents(req.user!.organisationId);return res.json({data,total:data.length});}catch(error){return next(error);}});
   app.use((_req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Endpoint not found'}}));
   app.use((error:unknown,_req:Request,res:Response,_next:NextFunction)=>{console.error(JSON.stringify({level:'error',message:'Unhandled request error',error:error instanceof Error?error.message:'Unknown error'}));res.status(500).json({error:{code:'INTERNAL_ERROR',message:'The request could not be completed'}});});
   return app;

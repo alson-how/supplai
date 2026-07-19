@@ -28,7 +28,19 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r apps/optimizer/requirements.txt
 PYTHONPATH=apps/optimizer pytest apps/optimizer/tests
 ```
-The Prisma schema is at `apps/api/prisma/schema.prisma`. After adding Prisma CLI/client in a database-enabled environment, run `prisma migrate dev --name initial` and a seed command. This focused POC snapshot supplies deterministic API demo data; the schema is ready for a repository-backed seed expansion.
+### Persistence
+
+The API runs on **Postgres via Prisma when `DATABASE_URL` is set**, and on in-memory repositories otherwise (used by tests and the key-free demo path). Both backends serve the identical deterministic demo dataset.
+
+```bash
+cd apps/api
+export DATABASE_URL=postgresql://supplai:supplai_dev@localhost:5432/supplai
+npm run prisma:generate   # generate the client
+npm run prisma:migrate    # apply migrations (prisma migrate deploy)
+npm run db:seed           # load the demo dataset (optional; see below)
+```
+
+The schema is at `apps/api/prisma/schema.prisma` with migrations under `apps/api/prisma/migrations`. On boot the API applies migrations and **seeds an empty database automatically**, so a fresh Docker volume is immediately usable; existing data is never overwritten. Scenarios, recommendations, planner decisions, and the audit trail all persist and survive a restart.
 
 ## Demo accounts
 All accounts use `Demo@123`.

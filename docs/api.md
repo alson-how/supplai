@@ -41,6 +41,10 @@ Forecasts are deterministic and key-free. `domain/forecasting.ts` implements mov
 
 `POST /api/scenarios/:id/run` assembles authorised opportunities from products, customers, markets, routes, inventory, production and market prices; applies the scenario assumptions (demand uplift, price/cost adjustments, safety-stock factor, margin threshold, objective weights, and rule toggles); sends a validated `AllocationProblem` to the optimiser; and maps the solver output back into ranked, explained recommendations. Each response contains `{ scenario, run, recommendations }` where `run` carries `engine` (`or-tools` or `local-heuristic`), `solverStatus`, financial totals, and solver diagnostics. The API never calculates allocations and the explanation provider never mutates them.
 
+## Persistence
+
+Repositories are async and have two implementations behind a shared interface. With `DATABASE_URL` set the API uses `PrismaCoreDataRepository` and `PrismaScenarioRepository` over Postgres; without it, in-memory repositories (used by tests and the key-free demo). The Prisma schema in `apps/api/prisma/schema.prisma` mirrors the domain models field-for-field, so mapping is a straight cast. Migrations live in `apps/api/prisma/migrations`; the server runs `migrate deploy` and seeds an empty database on boot. Scenarios, recommendations, decisions, and audit events persist and survive a restart.
+
 ## Optimiser client
 
 `services/optimizer-client.ts` calls the FastAPI/OR-Tools service over HTTP when `OPTIMIZER_URL` is set, and transparently falls back to a deterministic in-process heuristic that enforces the same eligibility, supply, safety-stock, route, MOQ, credit and strategic-commitment rules when the service is unreachable. The heuristic reports `engine: local-heuristic` and never claims `OPTIMAL`, so the provenance of every number is explicit.

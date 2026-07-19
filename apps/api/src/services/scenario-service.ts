@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { CoreDataRepository } from '../repositories/core-data-repository.js';
 import type { ScenarioRepository } from '../repositories/scenario-repository.js';
-import { availableCredit, availableToPromise, isRouteFeasible, logisticsEstimate, type Customer, type LogisticsRoute, type Market, type Product } from '../domain/core-data.js';
+import { availableCredit, availableToPromise, isRouteFeasible, logisticsEstimate, type Customer, type InventoryPosition, type LogisticsRoute, type Market, type MarketSignal, type Product, type ProductionPlan } from '../domain/core-data.js';
 import { applyAssumptions, compareScenarios, decideRecommendation, defaultAssumptions, weightsFromAssumptions, type RecommendationDecisionInput, type Scenario, type ScenarioAssumptions, type ScenarioComparison, type ScenarioRecommendation, type ScenarioRunSummary } from '../domain/scenarios.js';
 import { buildAllocationProblem, type AllocationResult, type OptimizerClient, type OptimizerOpportunity } from './optimizer-client.js';
-import { ForecastService } from './forecast-service.js';
+import { ForecastService, type ForecastReference } from './forecast-service.js';
 import { RecommendationExplanationService } from './recommendation-explanation-service.js';
 
 const PLAN_DISPATCH_DATE = '2026-08-01';
@@ -25,6 +25,7 @@ interface AssembledProblem {
   productSupply: Record<string, number>;
   routeCapacity: Record<string, number>;
   contexts: Map<string, OpportunityContext>;
+  signals: MarketSignal[];
 }
 
 export interface ScenarioRunResult {
@@ -48,32 +49,32 @@ export class ScenarioService {
     this.explanations = explanations;
   }
 
-  list(organisationId: string): Scenario[] {
+  list(organisationId: string): Promise<Scenario[]> {
     return this.scenarios.listScenarios(organisationId);
   }
 
-  get(organisationId: string, id: string): Scenario | undefined {
+  get(organisationId: string, id: string): Promise<Scenario | undefined> {
     return this.scenarios.getScenario(organisationId, id);
   }
 
-  recommendations(organisationId: string, scenarioId: string): ScenarioRecommendation[] {
+  recommendations(organisationId: string, scenarioId: string): Promise<ScenarioRecommendation[]> {
     return this.scenarios.recommendations(organisationId, scenarioId);
   }
 
   // Approve / modify / reject a persisted recommendation, recording an audit
   // event. Returns undefined when the scenario or recommendation is unknown.
-  decide(organisationId: string, userId: string, scenarioId: string, recommendationId: string, input: RecommendationDecisionInput): ScenarioRecommendation | undefined {
-    const existing = this.scenarios.getRecommendation(organisationId, scenarioId, recommendationId);
+  async decide(organisationId: string, userId: string, scenarioId: string, recommendationId: string, input: RecommendationDecisionInput): Promise<ScenarioRecommendation | undefined> {
+    const existing = await this.scenarios.getRecommendation(organisationId, scenarioId, recommendationId);
     if (!existing) return undefined;
     const before = { ...existing };
     const decided = decideRecommendation(existing, input, userId, new Date().toISOString());
-    const updated = this.scenarios.updateRecommendation(organisationId, scenarioId, recommendationId, decided);
+    const updated = await this.scenarios.updateRecommendation(organisationId, scenarioId, recommendationId, decided);
     if (!updated) return undefined;
-    this.coreData.createAudit(organisationId, userId, 'AllocationRecommendation', recommendationId, input.decision, before, updated);
+    await this.coreData.createAudit(organisationId, userId, 'AllocationRecommendation', recommendationId, input.decision, before, updated);
     return updated;
   }
 
-  create(organisationId: string, userId: string, input: { name: string; description?: string; assumptions?: Partial<ScenarioAssumptions> }): Scenario {
+  create(organisationId: string, userId: string, input: { name: string; description?: string; assumptions?: Partial<ScenarioAssumptions> }): Promise<Scenario> {
     const now = new Date().toISOString();
     const scenario: Scenario = {
       id: `scenario-${randomUUID()}`,
@@ -90,8 +91,8 @@ export class ScenarioService {
     return this.scenarios.createScenario(scenario);
   }
 
-  clone(organisationId: string, userId: string, sourceId: string, overrides: { name?: string; description?: string } = {}): Scenario | undefined {
-    const source = this.scenarios.getScenario(organisationId, sourceId);
+  async clone(organisationId: string, userId: string, sourceId: string, overrides: { name?: string; description?: string } = {}): Promise<Scenario | undefined> {
+    const source = await this.scenarios.getScenario(organisationId, sourceId);
     if (!source) return undefined;
     const now = new Date().toISOString();
     const scenario: Scenario = {
@@ -110,8 +111,8 @@ export class ScenarioService {
     return this.scenarios.createScenario(scenario);
   }
 
-  updateAssumptions(organisationId: string, id: string, assumptions: ScenarioAssumptions): Scenario | undefined {
-    const scenario = this.scenarios.getScenario(organisationId, id);
+  async updateAssumptions(organisationId: string, id: string, assumptions: ScenarioAssumptions): Promise<Scenario | undefined> {
+    const scenario = await this.scenarios.getScenario(organisationId, id);
     if (!scenario) return undefined;
     scenario.assumptions = assumptions;
     scenario.status = 'DRAFT';
@@ -119,22 +120,21 @@ export class ScenarioService {
     return this.scenarios.saveScenario(scenario);
   }
 
-  compare(organisationId: string, baselineId: string, candidateId: string): ScenarioComparison | undefined {
-    const baseline = this.scenarios.getScenario(organisationId, baselineId);
-    const candidate = this.scenarios.getScenario(organisationId, candidateId);
+  async compare(organisationId: string, baselineId: string, candidateId: string): Promise<ScenarioComparison | undefined> {
+    const [baseline, candidate] = await Promise.all([this.scenarios.getScenario(organisationId, baselineId), this.scenarios.getScenario(organisationId, candidateId)]);
     if (!baseline || !candidate) return undefined;
     return compareScenarios(baseline, candidate);
   }
 
   async run(organisationId: string, userId: string, id: string): Promise<ScenarioRunResult | undefined> {
-    const scenario = this.scenarios.getScenario(organisationId, id);
+    const scenario = await this.scenarios.getScenario(organisationId, id);
     if (!scenario) return undefined;
     scenario.status = 'RUNNING';
     scenario.updatedAt = new Date().toISOString();
-    this.scenarios.saveScenario(scenario);
+    await this.scenarios.saveScenario(scenario);
 
     try {
-      const assembled = this.assemble(organisationId, scenario.assumptions);
+      const assembled = await this.assemble(organisationId, scenario.assumptions);
       const safetyStock = Object.fromEntries(Object.entries(assembled.productSupply).map(([product, supply]) => [product, round(supply * scenario.assumptions.safetyStockFactor)]));
       const problem = buildAllocationProblem({
         opportunities: assembled.opportunities,
@@ -145,47 +145,55 @@ export class ScenarioService {
       });
       const result = await this.optimizer.solve(problem);
       const runId = `run-${randomUUID()}`;
-      const recommendations = await this.toRecommendations(organisationId, scenario.id, runId, result, assembled.contexts);
+      const recommendations = await this.toRecommendations(organisationId, scenario.id, runId, result, assembled.contexts, assembled.signals);
       const run = summarise(runId, result, recommendations);
 
-      this.scenarios.setRecommendations(organisationId, scenario.id, recommendations);
+      await this.scenarios.setRecommendations(organisationId, scenario.id, recommendations);
       scenario.status = 'COMPLETED';
       scenario.executedAt = run.generatedAt;
       scenario.updatedAt = run.generatedAt;
       scenario.lastRun = run;
-      this.scenarios.saveScenario(scenario);
-      this.coreData.createAudit(organisationId, userId, 'Scenario', scenario.id, 'RUN', null, { runId, objectiveValue: run.objectiveValue, recommendationCount: run.recommendationCount });
+      await this.scenarios.saveScenario(scenario);
+      await this.coreData.createAudit(organisationId, userId, 'Scenario', scenario.id, 'RUN', null, { runId, objectiveValue: run.objectiveValue, recommendationCount: run.recommendationCount });
       return { scenario, run, recommendations };
     } catch (error) {
       scenario.status = 'FAILED';
       scenario.updatedAt = new Date().toISOString();
-      this.scenarios.saveScenario(scenario);
+      await this.scenarios.saveScenario(scenario);
       throw error;
     }
   }
 
   // Request mapper: turn authorised domain data + demand forecasts into the
-  // optimiser's opportunity/supply/route inputs, then apply scenario assumptions.
-  private assemble(organisationId: string, assumptions: ScenarioAssumptions): AssembledProblem {
-    const products = this.coreData.products(organisationId).filter(product => product.status === 'ACTIVE');
-    const customers = this.coreData.customers(organisationId).filter(customer => customer.status === 'ACTIVE');
-    const marketsById = new Map(this.coreData.markets(organisationId).map(market => [market.id, market]));
-    const productSupply = this.supplyByProduct(organisationId, products);
+  // optimiser's opportunity/supply/route inputs, then apply scenario
+  // assumptions. All reference data is loaded once up front.
+  private async assemble(organisationId: string, assumptions: ScenarioAssumptions): Promise<AssembledProblem> {
+    const [reference, inventory, plans, routes, signals] = await Promise.all([
+      this.forecasts.reference(organisationId),
+      this.coreData.inventoryPositions(organisationId),
+      this.coreData.productionPlans(organisationId),
+      this.coreData.logisticsRoutes(organisationId),
+      this.coreData.marketSignals(organisationId),
+    ]);
+    const products = reference.products.filter(product => product.status === 'ACTIVE');
+    const customers = reference.customers.filter(customer => customer.status === 'ACTIVE');
+    const marketsById = new Map(reference.markets.map(market => [market.id, market]));
+    const productSupply = supplyByProduct(products, inventory, plans);
     const routeCapacity: Record<string, number> = {};
     const opportunities: OptimizerOpportunity[] = [];
     const contexts = new Map<string, OpportunityContext>();
 
     for (const product of products) {
-      const inventoryCost = this.holdingCostPerUnit(organisationId, product.id);
+      const inventoryCost = holdingCostPerUnit(inventory, product.id);
       for (const customer of customers) {
         const market = marketsById.get(customer.marketId);
         if (!market) continue;
-        const route = this.bestRouteToMarket(organisationId, market.id);
+        const route = bestRouteToMarket(routes, market.id);
         if (!route) continue; // cannot serve this market at all
-        const price = this.marketPrice(organisationId, product.id, market.id);
+        const price = reference.prices.find(signal => signal.productId === product.id && signal.marketId === market.id);
         if (!price) continue;
 
-        const forecast = this.forecasts.forecastForCustomer(organisationId, product, customer, market, assumptions.forecastMethod);
+        const forecast = this.forecasts.forecastForCustomer(reference, product, customer, market, assumptions.forecastMethod);
         const logisticsCost = round(logisticsEstimate(route, 1).costPerUnit, 2);
         const feasible = isRouteFeasible(route, PLAN_DISPATCH_DATE, PLAN_REQUIRED_DATE, product.minimumOrderQuantity).feasible;
         const base: OptimizerOpportunity = {
@@ -214,40 +222,11 @@ export class ScenarioService {
         contexts.set(opportunity.id, { opportunity, product, customer, market, route, forecastConfidence: forecast.confidenceScore, priceReliability: price.reliabilityScore });
       }
     }
-    return { opportunities, productSupply, routeCapacity, contexts };
-  }
-
-  private supplyByProduct(organisationId: string, products: Product[]): Record<string, number> {
-    const positions = this.coreData.inventoryPositions(organisationId);
-    const plans = this.coreData.productionPlans(organisationId);
-    const supply: Record<string, number> = {};
-    for (const product of products) {
-      const onHand = positions.filter(position => position.productId === product.id).reduce((sum, position) => sum + availableToPromise(position), 0);
-      const planned = plans.filter(plan => plan.productId === product.id).reduce((sum, plan) => sum + plan.availableQuantity, 0);
-      supply[product.id] = round(onHand + planned);
-    }
-    return supply;
-  }
-
-  private holdingCostPerUnit(organisationId: string, productId: string): number {
-    const positions = this.coreData.inventoryPositions(organisationId).filter(position => position.productId === productId);
-    if (positions.length === 0) return 0;
-    const averageAge = positions.reduce((sum, position) => sum + position.inventoryAgeDays, 0) / positions.length;
-    return round(averageAge * 0.04, 2);
-  }
-
-  private bestRouteToMarket(organisationId: string, marketId: string): LogisticsRoute | undefined {
-    return this.coreData.logisticsRoutes(organisationId)
-      .filter(route => route.destinationMarketId === marketId && route.active)
-      .sort((a, b) => logisticsEstimate(a, 1).costPerUnit - logisticsEstimate(b, 1).costPerUnit)[0];
-  }
-
-  private marketPrice(organisationId: string, productId: string, marketId: string) {
-    return this.coreData.marketPrices(organisationId).find(price => price.productId === productId && price.marketId === marketId);
+    return { opportunities, productSupply, routeCapacity, contexts, signals };
   }
 
   // Response mapper: turn solver allocations into ranked, explained recommendations.
-  private async toRecommendations(organisationId: string, scenarioId: string, runId: string, result: AllocationResult, contexts: Map<string, OpportunityContext>): Promise<ScenarioRecommendation[]> {
+  private async toRecommendations(organisationId: string, scenarioId: string, runId: string, result: AllocationResult, contexts: Map<string, OpportunityContext>, signals: MarketSignal[]): Promise<ScenarioRecommendation[]> {
     const unmet = new Set(result.diagnostics.unmetDemand.map(entry => entry.opportunityId));
     const ordered = [...result.allocations].sort((a, b) => b.netContribution - a.netContribution);
     const recommendations: ScenarioRecommendation[] = [];
@@ -265,7 +244,7 @@ export class ScenarioService {
       const confidence = round(Math.min(0.98, context.forecastConfidence * context.priceReliability * (1 - market.riskScore * 0.15)), 2);
 
       const constraints = buildConstraints({ unmet: unmet.has(allocation.opportunityId), creditLimited, strategic: opportunity.strategic, quantity: allocation.quantity, demand: opportunity.demand });
-      const risks = this.buildRisks(organisationId, product.id, market, customer);
+      const risks = buildRisks(signals, product.id, market, customer);
       const rationale = `Rank ${index + 1}: ${marginPercent.toFixed(1)}% net margin on ${allocation.quantity} tonnes${opportunity.strategic ? ', protecting a strategic account' : ''}.`;
       const explanation = await this.explanations.explain({
         product: product.name,
@@ -311,15 +290,38 @@ export class ScenarioService {
     }
     return recommendations;
   }
+}
 
-  private buildRisks(organisationId: string, productId: string, market: Market, customer: Customer): string[] {
-    const risks: string[] = [];
-    if (market.riskScore >= 0.3) risks.push(`Elevated market risk in ${market.country}`);
-    if (customer.paymentRiskScore >= 0.35) risks.push('Above-average payment risk');
-    const negative = this.coreData.marketSignals(organisationId).find(signal => signal.marketId === market.id && signal.productId === productId && signal.sentiment === 'NEGATIVE');
-    if (negative) risks.push(negative.title);
-    return risks;
+function supplyByProduct(products: Product[], positions: InventoryPosition[], plans: ProductionPlan[]): Record<string, number> {
+  const supply: Record<string, number> = {};
+  for (const product of products) {
+    const onHand = positions.filter(position => position.productId === product.id).reduce((sum, position) => sum + availableToPromise(position), 0);
+    const planned = plans.filter(plan => plan.productId === product.id).reduce((sum, plan) => sum + plan.availableQuantity, 0);
+    supply[product.id] = round(onHand + planned);
   }
+  return supply;
+}
+
+function holdingCostPerUnit(positions: InventoryPosition[], productId: string): number {
+  const matches = positions.filter(position => position.productId === productId);
+  if (matches.length === 0) return 0;
+  const averageAge = matches.reduce((sum, position) => sum + position.inventoryAgeDays, 0) / matches.length;
+  return round(averageAge * 0.04, 2);
+}
+
+function bestRouteToMarket(routes: LogisticsRoute[], marketId: string): LogisticsRoute | undefined {
+  return routes
+    .filter(route => route.destinationMarketId === marketId && route.active)
+    .sort((a, b) => logisticsEstimate(a, 1).costPerUnit - logisticsEstimate(b, 1).costPerUnit)[0];
+}
+
+function buildRisks(signals: MarketSignal[], productId: string, market: Market, customer: Customer): string[] {
+  const risks: string[] = [];
+  if (market.riskScore >= 0.3) risks.push(`Elevated market risk in ${market.country}`);
+  if (customer.paymentRiskScore >= 0.35) risks.push('Above-average payment risk');
+  const negative = signals.find(signal => signal.marketId === market.id && signal.productId === productId && signal.sentiment === 'NEGATIVE');
+  if (negative) risks.push(negative.title);
+  return risks;
 }
 
 function buildConstraints(input: { unmet: boolean; creditLimited: boolean; strategic: boolean; quantity: number; demand: number }): string[] {
@@ -338,7 +340,6 @@ function summarise(runId: string, result: AllocationResult, recommendations: Sce
     runId,
     solverStatus: result.solverStatus,
     engine: result.engine,
-    objectiveValue: result.objectiveValue,
     expectedRevenue,
     expectedNetMargin,
     marginPercent: round(expectedRevenue ? (expectedNetMargin / expectedRevenue) * 100 : 0, 2),
@@ -346,6 +347,7 @@ function summarise(runId: string, result: AllocationResult, recommendations: Sce
     recommendationCount: recommendations.length,
     executionDurationMs: result.executionDurationMs,
     generatedAt: new Date().toISOString(),
+    objectiveValue: result.objectiveValue,
     diagnostics: result.diagnostics,
   };
 }
