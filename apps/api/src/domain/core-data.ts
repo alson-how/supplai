@@ -119,12 +119,31 @@ export interface MarketSignal {
   summary: string; sentiment: 'POSITIVE'|'NEUTRAL'|'NEGATIVE'; impactScore: number; source: string; observedAt: string;
 }
 
+// A monthly historical sales point per product/market. When present, real sales
+// drive the demand forecast in place of the synthesised series.
+export interface SalesRecord {
+  id: string;
+  organisationId: string;
+  productId: string;
+  marketId: string;
+  period: string; // YYYY-MM
+  quantity: number;
+}
+
 export function availableToPromise(position: InventoryPosition): number {
   return Math.max(0, position.availableQuantity - position.reservedQuantity - position.qualityHoldQuantity + position.expectedInboundQuantity);
 }
 
 export function availableCredit(customer: Customer): number {
   return Math.max(0, customer.creditLimit - customer.outstandingCredit);
+}
+
+// The current price for a product in a market is the signal with the most recent
+// date, so importing a newer price supersedes the seeded one.
+export function latestPriceSignal(prices: MarketPriceSignal[], productId: string, marketId: string): MarketPriceSignal | undefined {
+  return prices
+    .filter(price => price.productId === productId && price.marketId === marketId)
+    .sort((a, b) => b.signalDate.localeCompare(a.signalDate))[0];
 }
 
 export function logisticsEstimate(route: LogisticsRoute, quantity: number, fuelSurchargePercent = 0) {
