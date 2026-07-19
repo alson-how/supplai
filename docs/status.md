@@ -37,9 +37,16 @@ SupplAI is a prescriptive PE/PP supply-decision platform. A planner can:
    `docs/sample-data/`).
 10. **Verify the audit trail** of runs, decisions and imports.
 
+11. **Ask an AI about the plan** — a natural-language assistant answers questions
+    using only the scenario's optimiser results ("why is X constrained?", "what
+    are the top opportunities?"), and free-text market news can be turned into
+    structured signals. Deterministic (key-free) by default; live Claude
+    (`claude-opus-4-8`) when `AI_PROVIDER=anthropic` + `AI_API_KEY` are set.
+
 The **LLM boundary never calculates or mutates allocations** — the OR-Tools
-solver (or the deterministic heuristic) produces every number; the explanation
-provider only describes them.
+solver (or the deterministic heuristic) produces every number; the AI layer only
+explains, answers, and structures — and explanation calls fall back to the
+deterministic provider on error.
 
 ## Architecture
 
@@ -49,7 +56,7 @@ provider only describes them.
 | API | Express 5, Zod, JWT/RBAC | Auth, tenant isolation, orchestration, async repositories |
 | Optimiser | FastAPI + Google OR-Tools (CBC) | Constrained allocation + diagnostics |
 | Persistence | Prisma + PostgreSQL (or in-memory) | Selected by `DATABASE_URL` |
-| Explanation | Deterministic provider (pluggable) | Key-free recommendation prose |
+| AI layer | Deterministic default / live Claude (`@anthropic-ai/sdk`) | Explanations, plan Q&A, news→signal extraction |
 
 ## Persistence
 
@@ -89,7 +96,10 @@ all use `Demo@123`.
    does via `/docs`).
 4. **More importable entities** — inventory positions and production plans
    (products, customers and market prices are done).
-5. **Auth hardening for production** — rotating refresh tokens, external secret
+5. **Persist extracted signals** — `/api/assistant/extract-signals` currently
+   previews structured signals; wire a `MarketSignal` upsert so they feed the
+   optimiser's risk inputs.
+6. **Auth hardening for production** — rotating refresh tokens, external secret
    manager, transactional multi-record decisions.
 6. **Historical sales** — replace the synthesised forecast history with a real
    sales table (only `ForecastService.demandHistory` changes).

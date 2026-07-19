@@ -108,6 +108,9 @@ export class ApiService {
 
   importTemplates() { return this.http.get<{ data: ImportTemplate[] }>(`${API_BASE}/api/imports/templates`); }
   importData(entity: string, csv: string, mode: 'validate' | 'commit') { return this.http.post<ImportReport>(`${API_BASE}/api/imports/${entity}`, { csv, mode }); }
+
+  askAssistant(scenarioId: string, question: string) { return this.http.post<{ provider: string; answer: string }>(`${API_BASE}/api/assistant/ask`, { scenarioId, question }); }
+  extractSignals(text: string) { return this.http.post<{ provider: string; signals: Array<{ title: string; marketCountry: string; productCode?: string; signalType: string; sentiment: string; impactScore: number; summary: string }> }>(`${API_BASE}/api/assistant/extract-signals`, { text }); }
 }
 
 function readJson<T>(key: string): T | null {

@@ -7,6 +7,7 @@ import { coreDataRouter } from './modules/core-data-router.js';
 import { demandRouter } from './modules/demand-router.js';
 import { importRouter } from './modules/import-router.js';
 import { scenarioRouter } from './modules/scenario-router.js';
+import { assistantRouter } from './modules/assistant-router.js';
 import { InMemoryCoreDataRepository } from './repositories/in-memory-core-data-repository.js';
 import { InMemoryScenarioRepository } from './repositories/in-memory-scenario-repository.js';
 import { PrismaCoreDataRepository } from './repositories/prisma-core-data-repository.js';
@@ -14,6 +15,9 @@ import { PrismaScenarioRepository } from './repositories/prisma-scenario-reposit
 import type { CoreDataRepository } from './repositories/core-data-repository.js';
 import type { ScenarioRepository } from './repositories/scenario-repository.js';
 import { ScenarioService } from './services/scenario-service.js';
+import { AssistantService } from './services/assistant-service.js';
+import { RecommendationExplanationService } from './services/recommendation-explanation-service.js';
+import { createAiProvider, type AiProvider } from './services/ai-provider.js';
 import { createOptimizerClient, type OptimizerClient } from './services/optimizer-client.js';
 import { hashPassword, verifyPassword } from './security/password.js';
 
@@ -24,16 +28,19 @@ const recommendations=[
   {id:'rec-3',rank:3,product:'HDPE Film F7000',customer:'IndoFlex Nusantara',market:'Indonesia',quantity:260,price:1210,revenue:314600,netMargin:30100,marginPercent:9.6,confidence:.78,status:'REVIEW_REQUIRED',feasibility:'CONSTRAINT_WARNING',route:'Pasir Gudang → Jakarta',leadTimeDays:11,rationale:'Commercially attractive, but capped by available customer credit.'},
 ];
 
-export interface AppDependencies { optimizerClient?: OptimizerClient; coreDataRepository?: CoreDataRepository; scenarioRepository?: ScenarioRepository }
+export interface AppDependencies { optimizerClient?: OptimizerClient; coreDataRepository?: CoreDataRepository; scenarioRepository?: ScenarioRepository; aiProvider?: AiProvider }
 
 // When DATABASE_URL is set the API is backed by Postgres via Prisma; otherwise it
 // runs on the in-memory repositories (used by tests and the key-free demo path).
+// The AI provider is deterministic unless AI_PROVIDER=anthropic + AI_API_KEY.
 export function createApp(dependencies: AppDependencies = {}){
   const usePrisma=!!process.env.DATABASE_URL;
   const repository=dependencies.coreDataRepository??(usePrisma?new PrismaCoreDataRepository():new InMemoryCoreDataRepository());
   const scenarioRepository=dependencies.scenarioRepository??(usePrisma?new PrismaScenarioRepository():new InMemoryScenarioRepository());
   const optimizerClient=dependencies.optimizerClient??createOptimizerClient();
-  const scenarioService=new ScenarioService(repository,scenarioRepository,optimizerClient);
+  const aiProvider=dependencies.aiProvider??createAiProvider();
+  const scenarioService=new ScenarioService(repository,scenarioRepository,optimizerClient,new RecommendationExplanationService(aiProvider));
+  const assistantService=new AssistantService(scenarioService,repository,aiProvider);
   const app=express();
   app.use(helmet(),cors({origin:process.env.CORS_ORIGIN?.split(',')??['http://localhost:4200']}),express.json({limit:'2mb'}));
   app.get('/health',(_req,res)=>res.json({status:'ok',service:'supplai-api'}));
@@ -43,6 +50,7 @@ export function createApp(dependencies: AppDependencies = {}){
   app.use('/api',demandRouter(repository));
   app.use('/api',scenarioRouter(scenarioService));
   app.use('/api',importRouter(repository));
+  app.use('/api',assistantRouter(assistantService));
   app.get('/api/analytics/executive-summary',authenticate,(_req,res)=>res.json({expectedRevenue:4830000,expectedNetMargin:624000,marginUpliftPercent:7.4,forecastAccuracyPercent:87.2,demandFulfilmentPercent:91.6,availableInventory:6840,unallocatedInventory:910,pendingApprovals:12,revenueAtRisk:386000,onTimeFeasibilityPercent:93.1,capacityUtilisationPercent:84.7}));
   app.get('/api/recommendations',authenticate,(_req,res)=>res.json({data:recommendations,total:recommendations.length}));
   app.patch('/api/recommendations/:id/decision',authenticate,async(req:AuthenticatedRequest,res,next)=>{const parsed=z.object({decision:z.enum(['APPROVED','MODIFIED','REJECTED']),finalQuantity:z.number().nonnegative().optional(),reason:z.string().min(3)}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:{code:'VALIDATION_ERROR',issues:parsed.error.flatten()}});const item=recommendations.find(record=>record.id===req.params.id);if(!item)return res.status(404).json({error:{code:'NOT_FOUND',message:'Recommendation not found'}});const before={...item};item.status=parsed.data.decision;if(parsed.data.finalQuantity!==undefined){item.quantity=parsed.data.finalQuantity;item.revenue=item.quantity*item.price;}try{await repository.createAudit(req.user!.organisationId,req.user!.id,'AllocationRecommendation',item.id,parsed.data.decision,before,item);}catch(error){return next(error);}return res.json(item);});

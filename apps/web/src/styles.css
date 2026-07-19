@@ -85,3 +85,9 @@ th.num,td.num{text-align:right}td.strong{font-weight:700}
 textarea.csv{width:100%;min-height:230px;margin:10px 0 4px;padding:12px 14px;border:1px solid #d3dde7;border-radius:8px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#17253b;resize:vertical}
 .errtable{margin-top:14px}
 .errtable td{color:#a5424a}
+
+/* --- AI assistant --- */
+.assistant{background:#fff;border:1px solid #e0e6ed;border-radius:8px;padding:17px;margin-bottom:14px}
+.ask-row{display:flex;gap:9px;margin:6px 0 4px}
+.ask-row .reason{flex:1;padding:9px 12px;border:1px solid #d3dde7;border-radius:6px;font:inherit}
+.answer{background:#f2fbfa;border:1px solid #cdeee9;border-radius:6px;padding:11px 13px;color:#17253b;line-height:1.55;white-space:pre-wrap}

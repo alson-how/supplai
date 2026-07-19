@@ -1,44 +1,21 @@
-// Explanation boundary. Providers receive only authorised, already-calculated
-// structured fields and return prose — they must never compute or mutate an
-// allocation. The deterministic provider needs no API key and stays first-class;
-// an OpenAI-compatible or Anthropic adapter can be dropped in behind the same
-// interface without touching domain services.
+import { createAiProvider, type AiProvider, type RecommendationExplanationInput } from './ai-provider.js';
 
-export interface RecommendationExplanationInput {
-  product: string;
-  customer: string;
-  market: string;
-  quantity: number;
-  marginPercent: number;
-  inventoryImpact: string;
-  productionImpact: string;
-  logisticsImpact: string;
-  constraints: string[];
-  risks: string[];
-  alternatives: string[];
-}
+export type { RecommendationExplanationInput } from './ai-provider.js';
 
-export interface ExplanationProvider {
-  explainRecommendation(input: RecommendationExplanationInput): Promise<string>;
-}
-
-export class DeterministicExplanationProvider implements ExplanationProvider {
-  async explainRecommendation(input: RecommendationExplanationInput): Promise<string> {
-    const constraints = input.constraints.length ? input.constraints.join(', ') : 'none binding';
-    const risks = input.risks.length ? input.risks.join(', ') : 'none material';
-    const alternative = input.alternatives[0] ?? 'retain inventory for a higher-margin order';
-    return [
-      `Allocate ${input.quantity} tonnes of ${input.product} to ${input.customer} in ${input.market} at an expected net margin of ${input.marginPercent.toFixed(1)}%.`,
-      `${input.inventoryImpact} ${input.productionImpact} ${input.logisticsImpact}`.trim(),
-      `Active constraints: ${constraints}. Key risks: ${risks}.`,
-      `Best alternative considered: ${alternative}.`,
-    ].join(' ');
-  }
-}
-
+// Thin wrapper kept for the scenario service's call site. Backed by the AI
+// provider: deterministic by default, Claude when AI_PROVIDER=anthropic + AI_API_KEY.
+// If the provider throws (e.g. a transient API error) the deterministic provider
+// produces the explanation so a run never fails on the explanation step.
 export class RecommendationExplanationService {
-  constructor(private readonly provider: ExplanationProvider = new DeterministicExplanationProvider()) {}
-  explain(input: RecommendationExplanationInput): Promise<string> {
-    return this.provider.explainRecommendation(input);
+  constructor(private readonly provider: AiProvider = createAiProvider()) {}
+
+  async explain(input: RecommendationExplanationInput): Promise<string> {
+    try {
+      return await this.provider.explainRecommendation(input);
+    } catch (error) {
+      console.warn(JSON.stringify({ level: 'warn', message: 'AI explanation failed; using deterministic fallback', error: error instanceof Error ? error.message : 'unknown' }));
+      const { DeterministicAiProvider } = await import('./ai-provider.js');
+      return new DeterministicAiProvider().explainRecommendation(input);
+    }
   }
 }

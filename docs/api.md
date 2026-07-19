@@ -32,6 +32,8 @@ All `/api` routes except login require `Authorization: Bearer <token>`. The orga
 | Scenarios | `GET /api/scenarios/compare` | Delta between two runs. Query: `baselineId`, `candidateId` |
 | Imports | `GET /api/imports/templates` | Header list and a ready-to-edit CSV example per importable entity |
 | Imports | `POST /api/imports/:entity` | Import `products`, `customers`, or `market-prices` from CSV; `mode` = `validate` (dry run) or `commit` (planner roles) |
+| Assistant | `POST /api/assistant/ask` | Ask a natural-language question about a scenario's plan. Body: `scenarioId`, `question` |
+| Assistant | `POST /api/assistant/extract-signals` | Turn free-text market news into structured PE/PP signals (preview). Body: `text` |
 
 List responses use `{ data, page, pageSize, total, totalPages }` where pagination applies. Validation errors use `{ error: { code, message, issues } }`.
 
@@ -46,6 +48,10 @@ Forecasts are deterministic and key-free. `domain/forecasting.ts` implements mov
 ## Data import
 
 `POST /api/imports/:entity` accepts a CSV body (`{ csv, mode }`) and returns a per-row report — `totalRows`, `valid`, `invalid`, `created`, `updated`, and `errors[{ row, field, message }]`. `mode: "validate"` is a dry run that persists nothing; `mode: "commit"` upserts each valid row by its natural key (`code`) and audits the import. Rows are validated with Zod (numeric/boolean cells coerced from strings), duplicate codes within a file are rejected, and customer rows resolve `marketCountry` to a market. Imported records are immediately visible to forecasting and the optimiser. Supported entities: `products`, `customers`, and `market-prices` (see `GET /api/imports/templates` for columns and examples). Customer rows resolve `marketCountry`, and market-price rows resolve `productCode` + `marketCountry`, to the referenced records. A market price is keyed by product, market and `signalDate`; the optimiser uses the most recent signal, so importing a newer price supersedes the seeded one. A real-data sample lives at `docs/sample-data/market-prices-sea-2026.csv` (2026 Southeast-Asia CFR levels from public reporting, used as a proxy).
+
+## AI layer
+
+The AI boundary (`services/ai-provider.ts`) has two implementations behind one interface: `DeterministicAiProvider` (rule-based, key-free, always available) and `AnthropicAiProvider` (live Claude via `@anthropic-ai/sdk`, model `claude-opus-4-8`). `createAiProvider` selects Anthropic only when `AI_PROVIDER=anthropic` and `AI_API_KEY` are set. It powers recommendation explanations, the `/api/assistant/ask` plan Q&A (answers strictly from the scenario's run summary, ranked recommendations, and solver diagnostics), and `/api/assistant/extract-signals` (market news → structured signals). The provider never computes or changes allocations, and explanation calls fall back to the deterministic provider on error so a run never fails on the AI step.
 
 ## Persistence
 

@@ -130,6 +130,16 @@ import { FORECAST_METHODS } from './auth.interceptor';
             </div>
           }
         </article>
+
+        <article class="assistant">
+          <div class="title"><span><b>✦ Ask the plan</b><small>AI assistant · {{ assistantProvider() || 'deterministic' }}</small></span></div>
+          <div class="ask-row">
+            <input class="reason" placeholder="e.g. Why is IndoFlex constrained? What are the top opportunities?" [(ngModel)]="question" name="q" (keyup.enter)="ask(sc.id)" />
+            <button class="primary" (click)="ask(sc.id)" [disabled]="asking() || question.trim().length < 3">{{ asking() ? 'Thinking…' : 'Ask' }}</button>
+          </div>
+          @if (answer()) { <p class="explain answer">{{ answer() }}</p> }
+          <p class="muted small">Answers use only this scenario's optimiser results — the AI never changes the numbers. Set <code>AI_API_KEY</code> for richer natural-language answers.</p>
+        </article>
       } @else {
         <div class="banner">Select a scenario, or create one to begin.</div>
       }
@@ -149,6 +159,10 @@ export class ScenariosComponent implements OnInit {
   readonly saved = signal(false);
   readonly deciding = signal('');
   readonly expanded = signal<string>('');
+  readonly asking = signal(false);
+  readonly answer = signal('');
+  readonly assistantProvider = signal('');
+  question = '';
   newName = '';
   baselineId = '';
   candidateId = '';
@@ -245,6 +259,15 @@ export class ScenariosComponent implements OnInit {
         this.refresh(this.selectedId());
       },
       error: () => { this.error.set('Decision failed — planner role required.'); this.deciding.set(''); },
+    });
+  }
+
+  ask(scenarioId: string): void {
+    if (this.question.trim().length < 3) return;
+    this.asking.set(true);
+    this.api.askAssistant(scenarioId, this.question.trim()).subscribe({
+      next: result => { this.answer.set(result.answer); this.assistantProvider.set(result.provider); this.asking.set(false); },
+      error: () => { this.answer.set('The assistant could not answer — has the scenario been run?'); this.asking.set(false); },
     });
   }
 
