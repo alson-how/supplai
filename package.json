@@ -1,0 +1,1 @@
+{"name":"supplai","private":true,"workspaces":["apps/*","packages/*"],"scripts":{"test":"npm run test -w @supplai/api","build":"npm run build -w @supplai/api"},"engines":{"node":">=20"}}

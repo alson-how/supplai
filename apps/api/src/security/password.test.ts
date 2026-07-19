@@ -1,0 +1,2 @@
+import {describe,expect,it} from 'vitest'; import {hashPassword,verifyPassword} from './password.js';
+describe('password hashing',()=>{it('verifies only the correct password and salt',()=>{const hash=hashPassword('correct horse battery staple','user-1');expect(verifyPassword('correct horse battery staple','user-1',hash)).toBe(true);expect(verifyPassword('wrong password','user-1',hash)).toBe(false);});});

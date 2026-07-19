@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: supplai, POSTGRES_PASSWORD: supplai_dev, POSTGRES_DB: supplai }
+    volumes: [supplai-data:/var/lib/postgresql/data]
+    healthcheck: { test: [CMD-SHELL, "pg_isready -U supplai"], interval: 5s, timeout: 3s, retries: 10 }
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    env_file: .env
+    ports: ["3000:3000"]
+    depends_on: { postgres: { condition: service_healthy } }
+  optimizer:
+    build: apps/optimizer
+    ports: ["8000:8000"]
+  web:
+    build: apps/web
+    ports: ["4200:80"]
+    depends_on: [api]
+volumes: { supplai-data: {} }

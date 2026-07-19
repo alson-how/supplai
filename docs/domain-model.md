@@ -1,0 +1,2 @@
+# Domain model
+Organisation is the tenant aggregate. Users have one governed role. Products and substitutions define sellable grades; markets contain customers and signals. Inventory positions and production plans form supply, while sales history and demand forecasts form demand. Routes constrain cost, capacity, reliability, and arrival. Business rules and scenario assumptions compile into an allocation problem. Each run owns immutable recommendations; decisions preserve original/final quantities and audit logs preserve before/after state.
