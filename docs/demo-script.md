@@ -4,7 +4,7 @@
 3. Check demand: `GET /api/demand/forecast` for ranked product/market forecasts and `GET /api/demand/summary` for backtest accuracy.
 4. Open allocation workspace: select PP H110MA and review the deterministic rationale, binding supply, inventory ageing, and feasible route.
 5. Clone Baseline, apply “Vietnam price drops 8%”, and run. Compare revenue, margin, fulfilment, and customers reprioritised.
-6. Modify a recommendation, enter a reason, approve it, then open Audit Log to show immutable human oversight.
+6. Expand a recommendation to read its explanation, then approve, modify (with a new quantity), or reject it with a reason — each decision is audited. Modified quantities rescale revenue and margin at the unchanged per-unit economics.
 
 ## API walkthrough of a scenario run
 

@@ -7,6 +7,8 @@ import type { ScenarioService } from '../services/scenario-service.js';
 const createSchema = z.object({ name: z.string().trim().min(3).max(120), description: z.string().trim().max(500).optional(), assumptions: assumptionsSchema.partial().optional() });
 const cloneSchema = z.object({ name: z.string().trim().min(3).max(120).optional(), description: z.string().trim().max(500).optional() });
 const compareSchema = z.object({ baselineId: z.string(), candidateId: z.string() });
+const decisionSchema = z.object({ decision: z.enum(['APPROVED', 'MODIFIED', 'REJECTED']), finalQuantity: z.number().nonnegative().optional(), reason: z.string().trim().min(3).max(500) })
+  .refine(body => body.decision !== 'MODIFIED' || body.finalQuantity !== undefined, { message: 'finalQuantity is required when modifying', path: ['finalQuantity'] });
 
 const PLANNER_ROLES = ['ADMINISTRATOR', 'COMMERCIAL_PLANNER', 'SUPPLY_CHAIN_PLANNER'] as const;
 
@@ -75,6 +77,14 @@ export function scenarioRouter(service: ScenarioService) {
     const scenario = service.get(organisation(req), String(req.params.id));
     if (!scenario) return notFound(res);
     return res.json({ data: service.recommendations(organisation(req), String(req.params.id)), total: service.recommendations(organisation(req), String(req.params.id)).length });
+  });
+
+  router.patch('/scenarios/:id/recommendations/:recId/decision', authorize(...PLANNER_ROLES), (req: AuthenticatedRequest, res) => {
+    const parsed = decisionSchema.safeParse(req.body);
+    if (!parsed.success) return invalid(res, parsed.error);
+    const updated = service.decide(organisation(req), req.user!.id, String(req.params.id), String(req.params.recId), parsed.data);
+    if (!updated) return notFound(res, 'Recommendation not found');
+    return res.json(updated);
   });
 
   return router;

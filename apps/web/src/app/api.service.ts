@@ -48,7 +48,9 @@ export interface Recommendation {
   id: string; rank: number; product: string; customer: string; market: string; route: string; quantity: number; price: number;
   revenue: number; netMargin: number; marginPercent: number; leadTimeDays: number; confidence: number; feasibility: string; status: string;
   rationale: string; explanation: string; constraints: string[];
+  originalQuantity?: number; decisionReason?: string; decidedBy?: string; decidedAt?: string;
 }
+export interface RecommendationDecision { decision: 'APPROVED' | 'MODIFIED' | 'REJECTED'; finalQuantity?: number; reason: string }
 export interface ScenarioRunResult { scenario: Scenario; run: RunSummary; recommendations: Recommendation[] }
 export interface ScenarioComparison {
   baselineScenarioId: string; candidateScenarioId: string; objectiveDelta: number; revenueDelta: number; revenueDeltaPercent: number;
@@ -95,6 +97,7 @@ export class ApiService {
   updateAssumptions(id: string, assumptions: Assumptions) { return this.http.patch<Scenario>(`${API_BASE}/api/scenarios/${id}/assumptions`, assumptions); }
   runScenario(id: string) { return this.http.post<ScenarioRunResult>(`${API_BASE}/api/scenarios/${id}/run`, {}); }
   scenarioRecommendations(id: string) { return this.http.get<{ data: Recommendation[]; total: number }>(`${API_BASE}/api/scenarios/${id}/recommendations`); }
+  decideRecommendation(scenarioId: string, recId: string, body: RecommendationDecision) { return this.http.patch<Recommendation>(`${API_BASE}/api/scenarios/${scenarioId}/recommendations/${recId}/decision`, body); }
   compareScenarios(baselineId: string, candidateId: string) { return this.http.get<ScenarioComparison>(`${API_BASE}/api/scenarios/compare?baselineId=${baselineId}&candidateId=${candidateId}`); }
 }
 

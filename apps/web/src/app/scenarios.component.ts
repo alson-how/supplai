@@ -77,21 +77,30 @@ import { FORECAST_METHODS } from './auth.interceptor';
           <article class="tablecard">
             <div class="title"><span><b>Recommendations</b><small>Ranked, explained</small></span></div>
             <table>
-              <thead><tr><th>#</th><th>Product → Market</th><th>Customer</th><th class="num">Qty (t)</th><th class="num">Margin</th><th class="num">Confidence</th><th>Status</th></tr></thead>
+              <thead><tr><th>#</th><th>Product → Market</th><th>Customer</th><th class="num">Qty (t)</th><th class="num">Margin</th><th class="num">Confidence</th><th>Decision</th></tr></thead>
               <tbody>
                 @for (rec of recommendations(); track rec.id) {
-                  <tr class="reprow" (click)="toggle(rec.id)">
+                  <tr class="reprow" (click)="toggle(rec)">
                     <td><span class="rank">{{ rec.rank }}</span></td>
-                    <td><b>{{ rec.product }}</b><small class="muted"> → {{ rec.market }}</small></td>
+                    <td><b>{{ rec.product }}</b><small class="muted"> → {{ rec.market }}</small>@if (rec.feasibility !== 'FEASIBLE') { <span class="warnmark" title="Constraint warning">⚠</span> }</td>
                     <td>{{ rec.customer }}</td>
-                    <td class="num strong">{{ rec.quantity | number:'1.0-0' }}</td>
+                    <td class="num strong">{{ rec.quantity | number:'1.0-0' }}@if (rec.originalQuantity && rec.originalQuantity !== rec.quantity) { <small class="muted"> (was {{ rec.originalQuantity | number:'1.0-0' }})</small> }</td>
                     <td class="num">{{ rec.marginPercent | number:'1.1-1' }}%</td>
                     <td class="num">{{ (rec.confidence * 100) | number:'1.0-0' }}%</td>
-                    <td><label class="feas" [class.warn]="rec.feasibility !== 'FEASIBLE'">{{ rec.feasibility === 'FEASIBLE' ? 'Feasible' : 'Warning' }}</label></td>
+                    <td><label class="decision" [class]="'d-' + rec.status.toLowerCase()">{{ statusLabel(rec.status) }}</label></td>
                   </tr>
                   @if (expanded() === rec.id) {
-                    <tr class="exprow"><td colspan="7"><p class="explain">{{ rec.explanation }}</p>
+                    <tr class="exprow"><td colspan="7">
+                      <p class="explain">{{ rec.explanation }}</p>
                       @if (rec.constraints.length) { <div class="chips">@for (c of rec.constraints; track c) { <span class="chip">{{ c }}</span> }</div> }
+                      @if (rec.decidedAt) { <p class="decided">Decision: <b>{{ statusLabel(rec.status) }}</b> — “{{ rec.decisionReason }}”</p> }
+                      <div class="decide" (click)="$event.stopPropagation()">
+                        <input class="reason" placeholder="Reason (required)" [(ngModel)]="decisionReason" name="reason" />
+                        <label class="qty">Modify to <input type="number" min="0" [(ngModel)]="decisionQty" name="qty" /> t</label>
+                        <button class="approve" [disabled]="deciding() || decisionReason.trim().length < 3" (click)="decide(rec, 'APPROVED')">Approve</button>
+                        <button [disabled]="deciding() || decisionReason.trim().length < 3 || decisionQty === null" (click)="decide(rec, 'MODIFIED')">Modify</button>
+                        <button class="reject" [disabled]="deciding() || decisionReason.trim().length < 3" (click)="decide(rec, 'REJECTED')">Reject</button>
+                      </div>
                     </td></tr>
                   }
                 }
@@ -138,10 +147,13 @@ export class ScenariosComponent implements OnInit {
   readonly creating = signal(false);
   readonly running = signal(false);
   readonly saved = signal(false);
+  readonly deciding = signal('');
   readonly expanded = signal<string>('');
   newName = '';
   baselineId = '';
   candidateId = '';
+  decisionReason = '';
+  decisionQty: number | null = null;
   form: Assumptions = defaultForm();
 
   readonly selected = computed(() => this.scenarios().find(s => s.id === this.selectedId()) ?? null);
@@ -215,7 +227,30 @@ export class ScenariosComponent implements OnInit {
     });
   }
 
-  toggle(id: string): void { this.expanded.set(this.expanded() === id ? '' : id); }
+  toggle(rec: Recommendation): void {
+    const open = this.expanded() === rec.id ? '' : rec.id;
+    this.expanded.set(open);
+    if (open) { this.decisionReason = rec.decisionReason ?? ''; this.decisionQty = rec.quantity; }
+  }
+
+  decide(rec: Recommendation, decision: 'APPROVED' | 'MODIFIED' | 'REJECTED'): void {
+    if (this.decisionReason.trim().length < 3) return;
+    this.deciding.set(rec.id);
+    const finalQuantity = decision === 'MODIFIED' ? Number(this.decisionQty) : undefined;
+    this.api.decideRecommendation(this.selectedId(), rec.id, { decision, finalQuantity, reason: this.decisionReason.trim() }).subscribe({
+      next: updated => {
+        this.recommendations.update(list => list.map(item => item.id === updated.id ? updated : item));
+        this.deciding.set('');
+        this.expanded.set('');
+        this.refresh(this.selectedId());
+      },
+      error: () => { this.error.set('Decision failed — planner role required.'); this.deciding.set(''); },
+    });
+  }
+
+  statusLabel(status: string): string {
+    return ({ PENDING_REVIEW: 'Pending', APPROVED: 'Approved', MODIFIED: 'Modified', REJECTED: 'Rejected' } as Record<string, string>)[status] ?? status;
+  }
   labelMethod(method: string): string { return method.split('_').map(word => word[0] + word.slice(1).toLowerCase()).join(' '); }
 }
 

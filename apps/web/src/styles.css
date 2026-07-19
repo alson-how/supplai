@@ -61,3 +61,20 @@ th.num,td.num{text-align:right}td.strong{font-weight:700}
 .diag{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .cmp-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.cmp-controls select{width:auto;min-width:170px}
 @media(max-width:1050px){.scenario-layout{grid-template-columns:1fr}.assume-grid{grid-template-columns:repeat(2,1fr)}.runmetrics{grid-template-columns:repeat(3,1fr)}}
+
+/* --- recommendation decision workflow --- */
+.warnmark{color:#a65b00;margin-left:5px}
+.decision{padding:5px 9px;border-radius:12px;font-size:10px;font-weight:600;background:#eef3f8;color:#5a6b80}
+.d-pending_review{background:#eef3f8;color:#5a6b80}
+.d-approved{background:#e9f7f3;color:#168576}
+.d-modified{background:#eaf1fb;color:#2f6bd0}
+.d-rejected{background:#fdecec;color:#c0453f}
+.decided{margin:8px 0 0;color:#42546a;font-size:11px}
+.decide{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed #e2e8ef}
+.decide .reason{flex:1;min-width:200px;padding:8px 10px;border:1px solid #d3dde7;border-radius:6px;font:inherit}
+.decide .qty{display:flex;align-items:center;gap:6px;font-size:11px;color:#5a6b80}
+.decide .qty input{width:80px;padding:7px 8px;border:1px solid #d3dde7;border-radius:6px;font:inherit}
+.decide button{padding:8px 14px}
+.decide .approve{background:#14a3a5;border-color:#14a3a5;color:#fff;font-weight:600}
+.decide .reject{background:#fff;border-color:#e6b3b0;color:#c0453f;font-weight:600}
+.decide button:disabled{opacity:.5;cursor:not-allowed}

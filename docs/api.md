@@ -28,6 +28,7 @@ All `/api` routes except login require `Authorization: Bearer <token>`. The orga
 | Scenarios | `PATCH /api/scenarios/:id/assumptions` | Replace scenario assumptions and reset to `DRAFT` (planner roles) |
 | Scenarios | `POST /api/scenarios/:id/run` | Map domain data → optimiser, solve, persist explained recommendations (planner roles) |
 | Scenarios | `GET /api/scenarios/:id/recommendations` | Ranked recommendations persisted from the last run |
+| Scenarios | `PATCH /api/scenarios/:id/recommendations/:recId/decision` | Approve, modify, or reject a recommendation; audited (planner roles) |
 | Scenarios | `GET /api/scenarios/compare` | Delta between two runs. Query: `baselineId`, `candidateId` |
 
 List responses use `{ data, page, pageSize, total, totalPages }` where pagination applies. Validation errors use `{ error: { code, message, issues } }`.

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CoreDataRepository } from '../repositories/core-data-repository.js';
 import type { ScenarioRepository } from '../repositories/scenario-repository.js';
 import { availableCredit, availableToPromise, isRouteFeasible, logisticsEstimate, type Customer, type LogisticsRoute, type Market, type Product } from '../domain/core-data.js';
-import { applyAssumptions, compareScenarios, defaultAssumptions, weightsFromAssumptions, type Scenario, type ScenarioAssumptions, type ScenarioComparison, type ScenarioRecommendation, type ScenarioRunSummary } from '../domain/scenarios.js';
+import { applyAssumptions, compareScenarios, decideRecommendation, defaultAssumptions, weightsFromAssumptions, type RecommendationDecisionInput, type Scenario, type ScenarioAssumptions, type ScenarioComparison, type ScenarioRecommendation, type ScenarioRunSummary } from '../domain/scenarios.js';
 import { buildAllocationProblem, type AllocationResult, type OptimizerClient, type OptimizerOpportunity } from './optimizer-client.js';
 import { ForecastService } from './forecast-service.js';
 import { RecommendationExplanationService } from './recommendation-explanation-service.js';
@@ -58,6 +58,19 @@ export class ScenarioService {
 
   recommendations(organisationId: string, scenarioId: string): ScenarioRecommendation[] {
     return this.scenarios.recommendations(organisationId, scenarioId);
+  }
+
+  // Approve / modify / reject a persisted recommendation, recording an audit
+  // event. Returns undefined when the scenario or recommendation is unknown.
+  decide(organisationId: string, userId: string, scenarioId: string, recommendationId: string, input: RecommendationDecisionInput): ScenarioRecommendation | undefined {
+    const existing = this.scenarios.getRecommendation(organisationId, scenarioId, recommendationId);
+    if (!existing) return undefined;
+    const before = { ...existing };
+    const decided = decideRecommendation(existing, input, userId, new Date().toISOString());
+    const updated = this.scenarios.updateRecommendation(organisationId, scenarioId, recommendationId, decided);
+    if (!updated) return undefined;
+    this.coreData.createAudit(organisationId, userId, 'AllocationRecommendation', recommendationId, input.decision, before, updated);
+    return updated;
   }
 
   create(organisationId: string, userId: string, input: { name: string; description?: string; assumptions?: Partial<ScenarioAssumptions> }): Scenario {

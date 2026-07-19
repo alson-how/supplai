@@ -90,4 +90,50 @@ describe('scenario workflow API', () => {
     const result = await request(app).post('/api/scenarios').set('Authorization', `Bearer ${viewerToken}`).send({ name: 'Read only attempt' });
     expect(result.status).toBe(403);
   });
+
+  it('approves and modifies a recommendation and records the audit trail', async () => {
+    const id = (await createScenario()).body.id;
+    const run = await request(app).post(`/api/scenarios/${id}/run`).set('Authorization', `Bearer ${token}`);
+    const [first, second] = run.body.recommendations as Array<{ id: string; quantity: number; price: number }>;
+
+    const approved = await request(app).patch(`/api/scenarios/${id}/recommendations/${first.id}/decision`)
+      .set('Authorization', `Bearer ${token}`).send({ decision: 'APPROVED', reason: 'Best risk-adjusted contribution' });
+    expect(approved.status).toBe(200);
+    expect(approved.body.status).toBe('APPROVED');
+
+    const half = Math.round(second.quantity / 2);
+    const modified = await request(app).patch(`/api/scenarios/${id}/recommendations/${second.id}/decision`)
+      .set('Authorization', `Bearer ${token}`).send({ decision: 'MODIFIED', finalQuantity: half, reason: 'Trim to available credit' });
+    expect(modified.status).toBe(200);
+    expect(modified.body.quantity).toBe(half);
+    expect(modified.body.revenue).toBeCloseTo(half * second.price, 1);
+    expect(modified.body.originalQuantity).toBe(second.quantity);
+
+    const persisted = await request(app).get(`/api/scenarios/${id}/recommendations`).set('Authorization', `Bearer ${token}`);
+    const statuses = (persisted.body.data as Array<{ id: string; status: string }>);
+    expect(statuses.find(r => r.id === first.id)?.status).toBe('APPROVED');
+    expect(statuses.find(r => r.id === second.id)?.status).toBe('MODIFIED');
+
+    const audit = await request(app).get('/api/audit').set('Authorization', `Bearer ${token}`);
+    expect(audit.body.data.filter((e: { entityType: string }) => e.entityType === 'AllocationRecommendation').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rejects a modify decision that omits the final quantity', async () => {
+    const id = (await createScenario()).body.id;
+    const run = await request(app).post(`/api/scenarios/${id}/run`).set('Authorization', `Bearer ${token}`);
+    const recId = run.body.recommendations[0].id;
+    const result = await request(app).patch(`/api/scenarios/${id}/recommendations/${recId}/decision`)
+      .set('Authorization', `Bearer ${token}`).send({ decision: 'MODIFIED', reason: 'Missing quantity' });
+    expect(result.status).toBe(400);
+  });
+
+  it('prevents executive viewers from deciding recommendations', async () => {
+    const id = (await createScenario()).body.id;
+    const run = await request(app).post(`/api/scenarios/${id}/run`).set('Authorization', `Bearer ${token}`);
+    const recId = run.body.recommendations[0].id;
+    const viewerToken = await login(app, 'executive_viewer@demo.supplai.io');
+    const result = await request(app).patch(`/api/scenarios/${id}/recommendations/${recId}/decision`)
+      .set('Authorization', `Bearer ${viewerToken}`).send({ decision: 'APPROVED', reason: 'Should be blocked' });
+    expect(result.status).toBe(403);
+  });
 });

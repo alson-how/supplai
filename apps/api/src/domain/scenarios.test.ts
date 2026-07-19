@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyAssumptions, assumptionsSchema, compareScenarios, defaultAssumptions, weightsFromAssumptions, type Scenario, type ScenarioRunSummary } from './scenarios.js';
+import { applyAssumptions, assumptionsSchema, compareScenarios, decideRecommendation, defaultAssumptions, weightsFromAssumptions, type Scenario, type ScenarioRecommendation, type ScenarioRunSummary } from './scenarios.js';
 import type { OptimizerOpportunity } from '../services/optimizer-client.js';
 
 function opportunity(overrides: Partial<OptimizerOpportunity> = {}): OptimizerOpportunity {
@@ -56,5 +56,36 @@ describe('compareScenarios', () => {
 
   it('requires both scenarios to have been run', () => {
     expect(() => compareScenarios(scenario('base'), scenario('cand', run({})))).toThrow(/must be run/);
+  });
+});
+
+describe('decideRecommendation', () => {
+  const base: ScenarioRecommendation = {
+    id: 'rec', organisationId: 'org', scenarioId: 's', runId: 'r', rank: 1, opportunityId: 'o', productId: 'p', customerId: 'c', marketId: 'm',
+    product: 'PP', customer: 'Acme', market: 'Vietnam', route: 'x', quantity: 100, price: 1000, revenue: 100000, netMargin: 12000, marginPercent: 12,
+    leadTimeDays: 7, confidence: 0.9, feasibility: 'FEASIBLE', status: 'PENDING_REVIEW', rationale: '', explanation: '', constraints: [],
+  };
+
+  it('approves without changing quantity', () => {
+    const decided = decideRecommendation(base, { decision: 'APPROVED', reason: 'Profitable' }, 'user-1', '2026-08-01T00:00:00.000Z');
+    expect(decided.status).toBe('APPROVED');
+    expect(decided.quantity).toBe(100);
+    expect(decided.decidedBy).toBe('user-1');
+    expect(decided.originalQuantity).toBe(100);
+  });
+
+  it('rescales revenue and margin when modified at unchanged unit economics', () => {
+    const decided = decideRecommendation(base, { decision: 'MODIFIED', finalQuantity: 60, reason: 'Credit cap' }, 'user-1', '2026-08-01T00:00:00.000Z');
+    expect(decided.quantity).toBe(60);
+    expect(decided.revenue).toBe(60000);
+    expect(decided.netMargin).toBe(7200); // 60 * (12000/100)
+    expect(decided.marginPercent).toBe(12); // per-unit economics unchanged
+    expect(decided.originalQuantity).toBe(100);
+  });
+
+  it('records a rejection with its reason', () => {
+    const decided = decideRecommendation(base, { decision: 'REJECTED', reason: 'Out of appetite' }, 'user-2', '2026-08-01T00:00:00.000Z');
+    expect(decided.status).toBe('REJECTED');
+    expect(decided.decisionReason).toBe('Out of appetite');
   });
 });

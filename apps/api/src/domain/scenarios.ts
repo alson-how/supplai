@@ -96,6 +96,36 @@ export interface ScenarioRecommendation {
   rationale: string;
   explanation: string;
   constraints: string[];
+  originalQuantity?: number;
+  decisionReason?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+}
+
+export interface RecommendationDecisionInput {
+  decision: Exclude<DecisionStatus, 'PENDING_REVIEW'>;
+  finalQuantity?: number;
+  reason: string;
+}
+
+// Apply a planner decision to a recommendation. MODIFIED with a final quantity
+// rescales revenue and net margin at the unchanged per-unit economics; the
+// decision is pure so the service and any future persistence layer share it.
+export function decideRecommendation(recommendation: ScenarioRecommendation, input: RecommendationDecisionInput, userId: string, decidedAt: string): ScenarioRecommendation {
+  const original = recommendation.originalQuantity ?? recommendation.quantity;
+  const unitMargin = recommendation.quantity ? recommendation.netMargin / recommendation.quantity : 0;
+  const quantity = input.decision === 'MODIFIED' && input.finalQuantity !== undefined ? input.finalQuantity : recommendation.quantity;
+  return {
+    ...recommendation,
+    status: input.decision,
+    quantity: round(quantity),
+    revenue: round(quantity * recommendation.price, 2),
+    netMargin: round(quantity * unitMargin, 2),
+    originalQuantity: round(original),
+    decisionReason: input.reason,
+    decidedBy: userId,
+    decidedAt,
+  };
 }
 
 export function weightsFromAssumptions(assumptions: ScenarioAssumptions): OptimizerWeights {
