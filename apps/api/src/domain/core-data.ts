@@ -119,6 +119,17 @@ export interface MarketSignal {
   summary: string; sentiment: 'POSITIVE'|'NEUTRAL'|'NEGATIVE'; impactScore: number; source: string; observedAt: string;
 }
 
+// A monthly historical sales point per product/market. When present, real sales
+// drive the demand forecast in place of the synthesised series.
+export interface SalesRecord {
+  id: string;
+  organisationId: string;
+  productId: string;
+  marketId: string;
+  period: string; // YYYY-MM
+  quantity: number;
+}
+
 export function availableToPromise(position: InventoryPosition): number {
   return Math.max(0, position.availableQuantity - position.reservedQuantity - position.qualityHoldQuantity + position.expectedInboundQuantity);
 }

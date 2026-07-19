@@ -3,7 +3,7 @@ import type { ScenarioService } from './scenario-service.js';
 import { createAiProvider, type AiProvider, type ExtractedSignal, type PlanQuestionInput } from './ai-provider.js';
 
 export interface PlanAnswer { provider: string; answer: string }
-export interface SignalExtractionResult { provider: string; signals: ExtractedSignal[] }
+export interface SignalExtractionResult { provider: string; signals: ExtractedSignal[]; persisted: number }
 
 // Read-only AI assistant over the current plan. It never mutates allocations —
 // it explains and answers using the structured facts the optimiser produced, and
@@ -45,12 +45,35 @@ export class AssistantService {
     return { provider: this.ai.name, answer };
   }
 
-  async extractSignals(organisationId: string, text: string): Promise<SignalExtractionResult> {
+  async extractSignals(organisationId: string, text: string, commit = false): Promise<SignalExtractionResult> {
     const [markets, products] = await Promise.all([this.coreData.markets(organisationId), this.coreData.products(organisationId)]);
     const signals = await this.ai.extractSignals(text, {
       markets: markets.map(market => market.country),
       productCodes: products.map(product => product.code),
     });
-    return { provider: this.ai.name, signals };
+    let persisted = 0;
+    if (commit) {
+      const marketByCountry = new Map(markets.map(market => [market.country.toLowerCase(), market]));
+      const productByCode = new Map(products.map(product => [product.code.toLowerCase(), product]));
+      const observedAt = new Date().toISOString().slice(0, 10);
+      for (const signal of signals) {
+        const market = marketByCountry.get(signal.marketCountry.toLowerCase());
+        if (!market) continue;
+        const product = signal.productCode ? productByCode.get(signal.productCode.toLowerCase()) : undefined;
+        await this.coreData.upsertMarketSignal(organisationId, {
+          marketId: market.id,
+          productId: product?.id ?? '', // '' = market-wide (all products)
+          title: signal.title,
+          signalType: signal.signalType,
+          summary: signal.summary,
+          sentiment: signal.sentiment,
+          impactScore: signal.impactScore,
+          source: `${this.ai.name} extraction`,
+          observedAt,
+        });
+        persisted++;
+      }
+    }
+    return { provider: this.ai.name, signals, persisted };
   }
 }

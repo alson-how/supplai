@@ -196,18 +196,22 @@ export class ScenarioService {
         const forecast = this.forecasts.forecastForCustomer(reference, product, customer, market, assumptions.forecastMethod);
         const logisticsCost = round(logisticsEstimate(route, 1).costPerUnit, 2);
         const feasible = isRouteFeasible(route, PLAN_DISPATCH_DATE, PLAN_REQUIRED_DATE, product.minimumOrderQuantity).feasible;
+        // Market signals (incl. imported/AI-extracted news) sense demand and risk:
+        // negative news raises risk, demand-increase news lifts demand.
+        const signal = signalAdjustment(signals, product.id, market.id);
+        const baseRisk = price.marketPricePerUnit * (customer.paymentRiskScore * 0.02 + market.riskScore * 0.01);
         const base: OptimizerOpportunity = {
           id: `${product.id}__${customer.id}`,
           product_id: product.id,
           customer_id: customer.id,
           market_id: market.id,
           route_id: route.id,
-          demand: forecast.predictedQuantity,
+          demand: round(Math.max(0, forecast.predictedQuantity * signal.demandMultiplier)),
           price: round(price.marketPricePerUnit, 2),
           production_cost: round(product.productionCostPerUnit, 2),
           logistics_cost: logisticsCost,
           inventory_cost: inventoryCost,
-          risk_cost: round(price.marketPricePerUnit * (customer.paymentRiskScore * 0.02 + market.riskScore * 0.01), 2),
+          risk_cost: round(baseRisk * signal.riskMultiplier, 2),
           available_credit: availableCredit(customer),
           minimum_order: product.minimumOrderQuantity,
           margin_threshold: assumptions.marginThreshold,
@@ -313,6 +317,23 @@ function bestRouteToMarket(routes: LogisticsRoute[], marketId: string): Logistic
   return routes
     .filter(route => route.destinationMarketId === marketId && route.active)
     .sort((a, b) => logisticsEstimate(a, 1).costPerUnit - logisticsEstimate(b, 1).costPerUnit)[0];
+}
+
+// Translate the latest market signals for a product/market into demand and risk
+// multipliers. A signal with an empty productId applies market-wide. Negative
+// sentiment raises risk; demand-increase/decrease signals move demand.
+function signalAdjustment(signals: MarketSignal[], productId: string, marketId: string): { demandMultiplier: number; riskMultiplier: number } {
+  const relevant = signals.filter(signal => signal.marketId === marketId && (signal.productId === productId || signal.productId === ''));
+  if (relevant.length === 0) return { demandMultiplier: 1, riskMultiplier: 1 };
+  const maxScore = (predicate: (s: MarketSignal) => boolean) => relevant.filter(predicate).reduce((max, s) => Math.max(max, s.impactScore), 0);
+  // A supply disruption raises risk even if the wording reads neutral.
+  const riskDriver = maxScore(s => s.sentiment === 'NEGATIVE' || s.signalType === 'SUPPLY_DISRUPTION');
+  const demandUp = maxScore(s => s.signalType === 'DEMAND_INCREASE' && s.sentiment !== 'NEGATIVE');
+  const demandDown = maxScore(s => s.signalType === 'DEMAND_DECREASE' || s.sentiment === 'NEGATIVE');
+  return {
+    demandMultiplier: Math.max(0.1, 1 + 0.2 * demandUp - 0.2 * demandDown),
+    riskMultiplier: 1 + 0.6 * riskDriver,
+  };
 }
 
 function buildRisks(signals: MarketSignal[], productId: string, market: Market, customer: Customer): string[] {

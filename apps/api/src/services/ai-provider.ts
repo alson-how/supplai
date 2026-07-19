@@ -81,10 +81,10 @@ export class DeterministicAiProvider implements AiProvider {
     const market = context.markets.find(m => lower.includes(m.toLowerCase()));
     if (!market) return [];
     const productCode = context.productCodes.find(code => lower.includes(code.toLowerCase()));
-    const positive = /(surge|tight|shortage|rally|firm|rise|rising|rose|up|premium|strong)/.test(lower);
-    const negative = /(drop|fall|falling|fell|soft|weak|oversupply|glut|down|decline|slump)/.test(lower);
-    const disruption = /(disruption|outage|congestion|force majeure|shutdown|turnaround|strike)/.test(lower);
-    const sentiment: SignalSentiment = positive && !negative ? 'POSITIVE' : negative && !positive ? 'NEGATIVE' : 'NEUTRAL';
+    const disruption = /(disruption|outage|congestion|force majeure|shutdown|turnaround|strike|halt)/.test(lower);
+    const positive = /(surge|tight|shortage|rally|firm|rise|rising|rose|premium|strong)/.test(lower);
+    const negative = /(drop|fall|falling|fell|soft|weak|oversupply|glut|decline|slump)/.test(lower) || disruption;
+    const sentiment: SignalSentiment = negative ? 'NEGATIVE' : positive ? 'POSITIVE' : 'NEUTRAL';
     const signalType: SignalType = disruption ? 'SUPPLY_DISRUPTION' : positive ? 'DEMAND_INCREASE' : negative ? 'DEMAND_DECREASE' : 'PRICING';
     return [{
       title: `${market} market signal`,

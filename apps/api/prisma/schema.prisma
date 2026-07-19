@@ -190,6 +190,18 @@ model MarketPriceSignal {
   @@index([organisationId, signalDate])
 }
 
+model SalesOrder {
+  id             String @id
+  organisationId String
+  productId      String
+  marketId       String
+  period         String
+  quantity       Float
+
+  @@unique([organisationId, productId, marketId, period])
+  @@index([organisationId, period])
+}
+
 model MarketSignal {
   id             String @id
   organisationId String

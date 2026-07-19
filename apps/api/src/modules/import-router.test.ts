@@ -22,7 +22,7 @@ describe('data import API', () => {
   it('publishes templates for importable entities', async () => {
     const result = await request(app).get('/api/imports/templates').set('Authorization', `Bearer ${token}`);
     expect(result.status).toBe(200);
-    expect(result.body.data.map((t: { entity: string }) => t.entity).sort()).toEqual(['customers', 'market-prices', 'products']);
+    expect(result.body.data.map((t: { entity: string }) => t.entity).sort()).toEqual(['customers', 'market-prices', 'products', 'sales']);
     expect(result.body.data[0].example).toContain('code,name');
   });
 
@@ -103,6 +103,23 @@ describe('data import API', () => {
     const afterRec = (afterRun.body.recommendations as Array<{ product: string; market: string; price: number }>).find(r => r.product.includes('F7000') && r.market === 'Vietnam');
     expect(afterRec!.price).toBeCloseTo(1850, 0);
     expect(afterRec!.price).toBeGreaterThan(beforeRec!.price);
+  });
+
+  it('imports historical sales and drives the demand forecast from it', async () => {
+    // Forecast before any real history (synthesised).
+    const before = await request(app).get('/api/demand/forecast?productId=product-H110MA&marketId=market-vn').set('Authorization', `Bearer ${token}`);
+    const beforeQty = before.body.data[0].predictedQuantity as number;
+
+    // Import a clearly higher, rising real monthly series for H110MA in Vietnam.
+    const csv = ['productCode,marketCountry,period,quantity',
+      'H110MA,Vietnam,2026-01,1500', 'H110MA,Vietnam,2026-02,1600', 'H110MA,Vietnam,2026-03,1700', 'H110MA,Vietnam,2026-04,1800'].join('\n');
+    const imported = await request(app).post('/api/imports/sales').set('Authorization', `Bearer ${token}`).send({ csv, mode: 'commit' });
+    expect(imported.body.created).toBe(4);
+
+    const after = await request(app).get('/api/demand/forecast?productId=product-H110MA&marketId=market-vn').set('Authorization', `Bearer ${token}`);
+    const afterQty = after.body.data[0].predictedQuantity as number;
+    expect(afterQty).toBeGreaterThan(1400); // driven by the imported ~1500-1800 series
+    expect(afterQty).toBeGreaterThan(beforeQty);
   });
 
   it('blocks executive viewers from importing', async () => {

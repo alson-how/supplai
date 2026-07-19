@@ -36,7 +36,7 @@ The target outcome remains a production-quality proof of concept where users can
 **Phase 3: Forecasting and optimisation integration is complete** in the in-memory POC:
 
 - Deterministic forecasting domain (`apps/api/src/domain/forecasting.ts`) with moving average, weighted moving average, exponential smoothing, seasonal trend, MAPE-based accuracy, and a low-confidence fallback chain.
-- `ForecastService` synthesising reproducible seasonal history from seed data, exposed via `GET /api/demand/forecast` and `GET /api/demand/summary`.
+- `ForecastService` preferring a real imported monthly sales series (≥3 months, via the `sales` CSV import) and otherwise synthesising reproducible seasonal history from seed data, exposed via `GET /api/demand/forecast` and `GET /api/demand/summary`.
 - Typed optimiser client (`services/optimizer-client.ts`): `HttpOptimizerClient` for the FastAPI/OR-Tools service, deterministic `LocalOptimizerClient` fallback, `FallbackOptimizerClient`, `buildAllocationProblem` request mapper.
 - Scenario domain (`domain/scenarios.ts`): assumption schema with defaults, `applyAssumptions`, `weightsFromAssumptions`, `compareScenarios`.
 - Scenario repository + in-memory implementation, and `ScenarioService` orchestrating create/clone/update/run/compare, the domain→optimiser request mapping, and optimiser→recommendation response mapping.

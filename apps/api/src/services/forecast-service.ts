@@ -1,5 +1,5 @@
 import type { CoreDataRepository } from '../repositories/core-data-repository.js';
-import { latestPriceSignal, type Customer, type Market, type MarketPriceSignal, type Product } from '../domain/core-data.js';
+import { latestPriceSignal, type Customer, type Market, type MarketPriceSignal, type Product, type SalesRecord } from '../domain/core-data.js';
 import { forecast, forecastAccuracy, pointForecast, type ForecastMethod, type ForecastResult } from '../domain/forecasting.js';
 
 // The POC has no historical sales table yet, so we synthesise a deterministic
@@ -30,19 +30,32 @@ export interface ForecastReference {
   markets: Market[];
   customers: Customer[];
   prices: MarketPriceSignal[];
+  sales: SalesRecord[];
 }
+
+const MIN_REAL_HISTORY = 3;
 
 export class ForecastService {
   constructor(private readonly repository: CoreDataRepository) {}
 
   async reference(organisationId: string): Promise<ForecastReference> {
-    const [products, markets, customers, prices] = await Promise.all([
+    const [products, markets, customers, prices, sales] = await Promise.all([
       this.repository.products(organisationId),
       this.repository.markets(organisationId),
       this.repository.customers(organisationId),
       this.repository.marketPrices(organisationId),
+      this.repository.salesHistory(organisationId),
     ]);
-    return { products, markets, customers, prices };
+    return { products, markets, customers, prices, sales };
+  }
+
+  // Real monthly sales for a product/market, oldest first — the demand-sensing
+  // series when enough history has been imported.
+  private realSeries(reference: ForecastReference, productId: string, marketId: string): number[] {
+    return reference.sales
+      .filter(record => record.productId === productId && record.marketId === marketId)
+      .sort((a, b) => a.period.localeCompare(b.period))
+      .map(record => record.quantity);
   }
 
   private productIndex(reference: ForecastReference, productId: string): number {
@@ -63,8 +76,11 @@ export class ForecastService {
     return direction * Math.abs(signal.percentageChange);
   }
 
-  // Deterministic seasonal series ending at the current period.
+  // Real imported sales when available (scaled to the customer share), otherwise
+  // a deterministic seasonal series anchored on the seed data.
   demandHistory(reference: ForecastReference, product: Product, market: Market, scale = 1): number[] {
+    const real = this.realSeries(reference, product.id, market.id);
+    if (real.length >= MIN_REAL_HISTORY) return real.map(quantity => Number((quantity * scale).toFixed(3)));
     const base = this.baseMarketDemand(reference, product, market) * scale;
     const index = this.productIndex(reference, product.id);
     const trendPerPeriod = this.marketTrendPercent(reference, product.id, market.id) / 100 / HISTORY_PERIODS;

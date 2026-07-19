@@ -4,7 +4,7 @@ import { z } from 'zod';
 // Row schemas coerce the string cells a CSV produces into typed values; the
 // import service resolves references (e.g. market country) and persists.
 
-export type ImportEntity = 'products' | 'customers' | 'market-prices';
+export type ImportEntity = 'products' | 'customers' | 'market-prices' | 'sales';
 
 // Minimal RFC-4180-style CSV parser: handles quoted fields, embedded commas and
 // newlines, and doubled quotes. Returns one keyed object per data row.
@@ -85,6 +85,14 @@ export const marketPriceRowSchema = z.object({
 });
 export type MarketPriceRow = z.infer<typeof marketPriceRowSchema>;
 
+export const salesRowSchema = z.object({
+  productCode: z.string().trim().min(2).max(30),
+  marketCountry: z.string().trim().min(2),
+  period: z.string().trim().regex(/^\d{4}-\d{2}$/, 'must be a month in YYYY-MM form'),
+  quantity: z.coerce.number().nonnegative(),
+});
+export type SalesRow = z.infer<typeof salesRowSchema>;
+
 export interface ImportEntityMeta { entity: ImportEntity; label: string; schema: z.ZodTypeAny; headers: string[]; example: string }
 
 export const IMPORT_ENTITIES: Record<ImportEntity, ImportEntityMeta> = {
@@ -121,8 +129,20 @@ export const IMPORT_ENTITIES: Record<ImportEntity, ImportEntityMeta> = {
       'F7000,Vietnam,2026-07-15,1440,USD,SEA CFR (proxy),0.9,UP,3.1',
     ].join('\n'),
   },
+  sales: {
+    entity: 'sales',
+    label: 'Historical sales',
+    schema: salesRowSchema,
+    headers: ['productCode', 'marketCountry', 'period', 'quantity'],
+    example: [
+      'productCode,marketCountry,period,quantity',
+      'H110MA,Vietnam,2026-01,540',
+      'H110MA,Vietnam,2026-02,585',
+      'H110MA,Vietnam,2026-03,610',
+    ].join('\n'),
+  },
 };
 
 export function isImportEntity(value: string): value is ImportEntity {
-  return value === 'products' || value === 'customers' || value === 'market-prices';
+  return value === 'products' || value === 'customers' || value === 'market-prices' || value === 'sales';
 }

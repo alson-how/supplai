@@ -29,19 +29,25 @@ SupplAI is a prescriptive PE/PP supply-decision platform. A planner can:
    rescales revenue and margin at unchanged unit economics. Every decision is
    audited.
 8. **Compare two scenario runs** (revenue, margin, allocated volume, count).
-9. **Import operational data** — products, customers, and market prices from CSV
-   with a validate (dry-run) / commit flow, per-row error reporting, and upsert
-   by natural key. Imported records immediately feed forecasting and the
-   optimiser; importing real 2026 market prices shifts the plan toward the
-   genuinely higher-value grades (a real-data sample ships in
-   `docs/sample-data/`).
+9. **Import operational data** — products, customers, market prices, and
+   historical sales from CSV with a validate (dry-run) / commit flow, per-row
+   error reporting, and upsert by natural key. Imported records immediately feed
+   forecasting and the optimiser; importing real 2026 market prices shifts the
+   plan toward the genuinely higher-value grades (a real-data sample ships in
+   `docs/sample-data/`). A real monthly sales series (≥3 months) drives the
+   demand forecast directly, replacing the synthesised history for that
+   product/market.
 10. **Verify the audit trail** of runs, decisions and imports.
 
 11. **Ask an AI about the plan** — a natural-language assistant answers questions
     using only the scenario's optimiser results ("why is X constrained?", "what
     are the top opportunities?"), and free-text market news can be turned into
-    structured signals. Deterministic (key-free) by default; live Claude
-    (`claude-opus-4-8`) when `AI_PROVIDER=anthropic` + `AI_API_KEY` are set.
+    structured signals. Committed signals persist and feed the optimiser: a
+    supply-disruption or negative signal raises the risk cost on the affected
+    product/market, and demand-increase/decrease signals move sensed demand, so
+    news actually shifts the plan. Deterministic (key-free) by default; live
+    Claude (`claude-opus-4-8`) when `AI_PROVIDER=anthropic` + `AI_API_KEY` are
+    set.
 
 The **LLM boundary never calculates or mutates allocations** — the OR-Tools
 solver (or the deterministic heuristic) produces every number; the AI layer only
@@ -78,8 +84,9 @@ all use `Demo@123`.
 
 ## Test & verification status
 
-- **API: 54 tests** (Vitest) across forecasting, scenarios, optimiser
-  client/mappers, decisions, imports, and full HTTP flows — all passing.
+- **API: 69 tests** (Vitest) across forecasting, scenarios, optimiser
+  client/mappers, decisions, imports (incl. sales→forecast), the AI assistant
+  (incl. signal→plan-shift), and full HTTP flows — all passing.
 - **Optimiser: pytest** passing.
 - **Web builds** clean (Angular production build).
 - Each phase was **driven in a real browser (Chromium/Playwright)** and, for the
@@ -95,11 +102,6 @@ all use `Demo@123`.
 3. **Express Swagger/OpenAPI** — publish live API docs (the optimiser already
    does via `/docs`).
 4. **More importable entities** — inventory positions and production plans
-   (products, customers and market prices are done).
-5. **Persist extracted signals** — `/api/assistant/extract-signals` currently
-   previews structured signals; wire a `MarketSignal` upsert so they feed the
-   optimiser's risk inputs.
-6. **Auth hardening for production** — rotating refresh tokens, external secret
+   (products, customers, market prices and historical sales are done).
+5. **Auth hardening for production** — rotating refresh tokens, external secret
    manager, transactional multi-record decisions.
-6. **Historical sales** — replace the synthesised forecast history with a real
-   sales table (only `ForecastService.demandHistory` changes).

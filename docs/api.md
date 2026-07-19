@@ -31,15 +31,15 @@ All `/api` routes except login require `Authorization: Bearer <token>`. The orga
 | Scenarios | `PATCH /api/scenarios/:id/recommendations/:recId/decision` | Approve, modify, or reject a recommendation; audited (planner roles) |
 | Scenarios | `GET /api/scenarios/compare` | Delta between two runs. Query: `baselineId`, `candidateId` |
 | Imports | `GET /api/imports/templates` | Header list and a ready-to-edit CSV example per importable entity |
-| Imports | `POST /api/imports/:entity` | Import `products`, `customers`, or `market-prices` from CSV; `mode` = `validate` (dry run) or `commit` (planner roles) |
+| Imports | `POST /api/imports/:entity` | Import `products`, `customers`, `market-prices`, or `sales` from CSV; `mode` = `validate` (dry run) or `commit` (planner roles) |
 | Assistant | `POST /api/assistant/ask` | Ask a natural-language question about a scenario's plan. Body: `scenarioId`, `question` |
-| Assistant | `POST /api/assistant/extract-signals` | Turn free-text market news into structured PE/PP signals (preview). Body: `text` |
+| Assistant | `POST /api/assistant/extract-signals` | Turn free-text market news into structured PE/PP signals. Body: `text`, `commit` (default `false`). With `commit: true` the resolved signals are persisted as `MarketSignal`s and feed the optimiser's demand/risk inputs on the next run |
 
 List responses use `{ data, page, pageSize, total, totalPages }` where pagination applies. Validation errors use `{ error: { code, message, issues } }`.
 
 ## Forecasting
 
-Forecasts are deterministic and key-free. `domain/forecasting.ts` implements moving average, weighted moving average, exponential smoothing, and additive seasonal-trend methods, with a low-confidence fallback (product category demand × market trend × customer segment) when history is too short. Because the POC has no sales table yet, `ForecastService` synthesises a reproducible seasonal history from the seeded structural data; only `demandHistory` changes once a real sales repository lands.
+Forecasts are deterministic and key-free. `domain/forecasting.ts` implements moving average, weighted moving average, exponential smoothing, and additive seasonal-trend methods, with a low-confidence fallback (product category demand × market trend × customer segment) when history is too short. `ForecastService.demandHistory` prefers a real imported monthly sales series (via the `sales` import) once at least three months exist for a product/market; otherwise it synthesises a reproducible seasonal history from the seeded structural data.
 
 ## Scenario runs
 

@@ -4,7 +4,7 @@ import { authenticate, type AuthenticatedRequest } from '../middleware/auth.js';
 import type { AssistantService } from '../services/assistant-service.js';
 
 const askSchema = z.object({ scenarioId: z.string(), question: z.string().trim().min(3).max(500) });
-const extractSchema = z.object({ text: z.string().trim().min(10).max(5000) });
+const extractSchema = z.object({ text: z.string().trim().min(10).max(5000), commit: z.boolean().default(false) });
 
 function organisation(req: AuthenticatedRequest) { return req.user!.organisationId; }
 function invalid(res: Response, error: z.ZodError) {
@@ -33,7 +33,7 @@ export function assistantRouter(service: AssistantService) {
     const parsed = extractSchema.safeParse(req.body);
     if (!parsed.success) return invalid(res, parsed.error);
     try {
-      return res.json(await service.extractSignals(organisation(req), parsed.data.text));
+      return res.json(await service.extractSignals(organisation(req), parsed.data.text, parsed.data.commit));
     } catch (error) {
       return next(error);
     }

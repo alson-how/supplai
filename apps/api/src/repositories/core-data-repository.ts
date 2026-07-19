@@ -1,4 +1,4 @@
-import type { Customer, InventoryLocation, InventoryPosition, LogisticsRoute, Market, MarketPriceSignal, MarketSignal, Product, ProductionFacility, ProductionPlan } from '../domain/core-data.js';
+import type { Customer, InventoryLocation, InventoryPosition, LogisticsRoute, Market, MarketPriceSignal, MarketSignal, Product, ProductionFacility, ProductionPlan, SalesRecord } from '../domain/core-data.js';
 
 export type UpsertOutcome = 'created' | 'updated';
 
@@ -16,6 +16,7 @@ export interface CoreDataRepository {
   logisticsRoutes(organisationId: string): Promise<LogisticsRoute[]>;
   marketPrices(organisationId: string): Promise<MarketPriceSignal[]>;
   marketSignals(organisationId: string): Promise<MarketSignal[]>;
+  salesHistory(organisationId: string): Promise<SalesRecord[]>;
   createProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<Product>;
   updateProduct(organisationId: string, id: string, input: Partial<Omit<Product, 'id' | 'organisationId'>>): Promise<Product | undefined>;
   deleteProduct(organisationId: string, id: string): Promise<boolean>;
@@ -23,6 +24,8 @@ export interface CoreDataRepository {
   upsertProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
   upsertCustomer(organisationId: string, input: Omit<Customer, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
   upsertMarketPrice(organisationId: string, input: Omit<MarketPriceSignal, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
+  upsertSalesRecord(organisationId: string, input: Omit<SalesRecord, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
+  upsertMarketSignal(organisationId: string, input: Omit<MarketSignal, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
   createAudit(organisationId: string, userId: string, entityType: string, entityId: string, action: string, before: unknown, after: unknown): Promise<void>;
   auditEvents(organisationId: string): Promise<object[]>;
 }

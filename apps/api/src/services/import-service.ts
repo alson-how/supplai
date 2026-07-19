@@ -1,6 +1,6 @@
 import type { CoreDataRepository, UpsertOutcome } from '../repositories/core-data-repository.js';
 import type { Customer, MarketPriceSignal, Product } from '../domain/core-data.js';
-import { customerRowSchema, IMPORT_ENTITIES, marketPriceRowSchema, parseCsv, productRowSchema, type CustomerRow, type ImportEntity, type MarketPriceRow, type ProductRow } from '../domain/import.js';
+import { customerRowSchema, IMPORT_ENTITIES, marketPriceRowSchema, parseCsv, productRowSchema, salesRowSchema, type CustomerRow, type ImportEntity, type MarketPriceRow, type ProductRow, type SalesRow } from '../domain/import.js';
 
 export type ImportMode = 'validate' | 'commit';
 
@@ -21,6 +21,7 @@ const OPTIONAL_HEADERS: Record<ImportEntity, string[]> = {
   products: ['status'],
   customers: ['status'],
   'market-prices': ['currency', 'source', 'reliabilityScore', 'trend', 'percentageChange'],
+  sales: [],
 };
 
 type BuiltRow = { ok: true; key: string; commit: () => Promise<UpsertOutcome> } | { ok: false; errors: ImportRowError[] };
@@ -55,6 +56,7 @@ export class ImportService {
       const raw = dropEmpty(rawRow); // blank cells fall back to schema defaults
       const built = entity === 'products' ? this.buildProduct(organisationId, raw)
         : entity === 'customers' ? this.buildCustomer(organisationId, raw, marketsByCountry)
+        : entity === 'sales' ? this.buildSales(organisationId, raw, productsByCode, marketsByCountry)
         : this.buildMarketPrice(organisationId, raw, productsByCode, marketsByCountry);
       if (!built.ok) {
         report.invalid++;
@@ -110,6 +112,20 @@ export class ImportService {
       currency: row.currency, source: row.source, reliabilityScore: row.reliabilityScore, trend: row.trend, percentageChange: row.percentageChange,
     };
     return { ok: true, key: `${row.productCode}|${row.marketCountry}|${row.signalDate}`, commit: () => this.coreData.upsertMarketPrice(organisationId, signal) };
+  }
+
+  private buildSales(organisationId: string, raw: Record<string, string>, productsByCode: Map<string, { id: string }>, marketsByCountry: Map<string, { id: string }>): BuiltRow {
+    const parsed = salesRowSchema.safeParse(raw);
+    if (!parsed.success) return { ok: false, errors: zodErrors(parsed.error) };
+    const row: SalesRow = parsed.data;
+    const product = productsByCode.get(row.productCode.toLowerCase());
+    const market = marketsByCountry.get(row.marketCountry.toLowerCase());
+    const errors: ImportRowError[] = [];
+    if (!product) errors.push({ row: 0, field: 'productCode', message: `Unknown product code "${row.productCode}"` });
+    if (!market) errors.push({ row: 0, field: 'marketCountry', message: `Unknown market country "${row.marketCountry}"` });
+    if (!product || !market) return { ok: false, errors };
+    const record = { productId: product.id, marketId: market.id, period: row.period, quantity: row.quantity };
+    return { ok: true, key: `${row.productCode}|${row.marketCountry}|${row.period}`, commit: () => this.coreData.upsertSalesRecord(organisationId, record) };
   }
 }
 
