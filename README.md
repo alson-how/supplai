@@ -9,7 +9,7 @@ SupplAI is a prescriptive PE/PP supply decision platform. It senses demand, rank
 - **Optimiser:** isolated FastAPI service using OR-Tools CBC; the solver—not an LLM—calculates allocation.
 - **Explanation:** provider contract with deterministic fallback; OpenAI-compatible, Anthropic, or local adapters can be added without changing domain services.
 
-See [architecture](docs/architecture.md), [domain model](docs/domain-model.md), [optimisation model](docs/optimisation-model.md), [core data API](docs/api.md), and the [demo script](docs/demo-script.md).
+See the [status snapshot](docs/status.md) for what works today and the backlog, plus [architecture](docs/architecture.md), [domain model](docs/domain-model.md), [optimisation model](docs/optimisation-model.md), [core data API](docs/api.md), and the [demo script](docs/demo-script.md).
 
 ## Run locally
 Prerequisites: Docker Compose v2 (recommended), or Node 22 + Python 3.12.
