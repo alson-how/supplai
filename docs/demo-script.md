@@ -5,6 +5,7 @@
 4. Open allocation workspace: select PP H110MA and review the deterministic rationale, binding supply, inventory ageing, and feasible route.
 5. Clone Baseline, apply “Vietnam price drops 8%”, and run. Compare revenue, margin, fulfilment, and customers reprioritised.
 6. Expand a recommendation to read its explanation, then approve, modify (with a new quantity), or reject it with a reason — each decision is audited. Modified quantities rescale revenue and margin at the unchanged per-unit economics.
+7. Open **Data import**, load the customer example, Validate (dry run), then Import. Re-run a scenario and show the newly imported customer now receiving allocations — import flows straight into forecasting and the optimiser.
 
 ## API walkthrough of a scenario run
 

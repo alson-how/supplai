@@ -52,7 +52,9 @@ Since Phase 3 the following also landed:
 - **Approve / modify / reject decision workflow** on scenario recommendations (`PATCH /api/scenarios/:id/recommendations/:recId/decision`), audited, with the modify path rescaling revenue/margin at unchanged unit economics — surfaced in the UI.
 - **Prisma-backed persistence over Postgres.** Repositories are now async with two implementations behind one interface (`DATABASE_URL` selects Prisma vs in-memory). The schema was realigned to the domain models, the initial migration is committed, a seed script and seed-if-empty startup are in place, and persistence was verified end-to-end (scenario run + decision survive an API restart).
 
-Still outstanding: import workflows, Express Swagger/OpenAPI, Playwright e2e in CI, and tightening Prisma Float columns to Decimal with mappers for financial precision.
+- **Data import.** `POST /api/imports/:entity` imports products and customers from CSV with a validate (dry-run) / commit flow, per-row error reporting, upsert-by-code, and `marketCountry` resolution for customers, surfaced in a Data import UI. Verified against Postgres: an imported customer persists and then receives allocations on the next scenario run.
+
+Still outstanding: Express Swagger/OpenAPI, Playwright e2e in CI, more importable entities (market prices, inventory), and tightening Prisma Float columns to Decimal with mappers for financial precision.
 
 ## What has been implemented
 

@@ -5,13 +5,14 @@ import { ApiService } from './api.service';
 import { DashboardComponent } from './dashboard.component';
 import { DemandComponent } from './demand.component';
 import { ScenariosComponent } from './scenarios.component';
+import { ImportComponent } from './import.component';
 
-type View = 'dashboard' | 'demand' | 'scenarios';
+type View = 'dashboard' | 'demand' | 'scenarios' | 'import';
 
 @Component({
   selector: 'supplai-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, DashboardComponent, DemandComponent, ScenariosComponent],
+  imports: [CommonModule, FormsModule, DashboardComponent, DemandComponent, ScenariosComponent, ImportComponent],
   template: `
   @if (!api.isAuthenticated()) {
     <div class="login-wrap">
@@ -34,6 +35,8 @@ type View = 'dashboard' | 'demand' | 'scenarios';
           <a [class.active]="view() === 'dashboard'" (click)="view.set('dashboard')">▦ Executive overview</a>
           <a [class.active]="view() === 'demand'" (click)="view.set('demand')">⌁ Demand intelligence</a>
           <a [class.active]="view() === 'scenarios'" (click)="view.set('scenarios')">⚙ Scenario simulator</a>
+          <label>OPERATIONS</label>
+          <a [class.active]="view() === 'import'" (click)="view.set('import')">↥ Data import</a>
         </nav>
         <div class="user"><span>{{ initials() }}</span><span><b>{{ api.user()?.name }}</b><small>{{ roleLabel() }}</small></span></div>
         <button class="logout" (click)="api.logout()">Sign out</button>
@@ -47,6 +50,7 @@ type View = 'dashboard' | 'demand' | 'scenarios';
           @case ('dashboard') { <supplai-dashboard /> }
           @case ('demand') { <supplai-demand /> }
           @case ('scenarios') { <supplai-scenarios /> }
+          @case ('import') { <supplai-import /> }
         }
       </main>
     </div>
@@ -60,7 +64,7 @@ export class AppComponent {
   email = 'commercial_planner@demo.supplai.io';
   password = 'Demo@123';
 
-  readonly title = computed(() => ({ dashboard: 'Executive overview', demand: 'Demand intelligence', scenarios: 'Scenario simulator' }[this.view()]));
+  readonly title = computed(() => ({ dashboard: 'Executive overview', demand: 'Demand intelligence', scenarios: 'Scenario simulator', import: 'Data import' }[this.view()]));
   readonly initials = computed(() => (this.api.user()?.name ?? '?').split(' ').map(part => part[0]).slice(0, 2).join('').toUpperCase());
   readonly roleLabel = computed(() => (this.api.user()?.role ?? '').split('_').map(word => word[0] + word.slice(1).toLowerCase()).join(' '));
 

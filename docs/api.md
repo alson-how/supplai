@@ -30,6 +30,8 @@ All `/api` routes except login require `Authorization: Bearer <token>`. The orga
 | Scenarios | `GET /api/scenarios/:id/recommendations` | Ranked recommendations persisted from the last run |
 | Scenarios | `PATCH /api/scenarios/:id/recommendations/:recId/decision` | Approve, modify, or reject a recommendation; audited (planner roles) |
 | Scenarios | `GET /api/scenarios/compare` | Delta between two runs. Query: `baselineId`, `candidateId` |
+| Imports | `GET /api/imports/templates` | Header list and a ready-to-edit CSV example per importable entity |
+| Imports | `POST /api/imports/:entity` | Import `products` or `customers` from CSV; `mode` = `validate` (dry run) or `commit` (planner roles) |
 
 List responses use `{ data, page, pageSize, total, totalPages }` where pagination applies. Validation errors use `{ error: { code, message, issues } }`.
 
@@ -40,6 +42,10 @@ Forecasts are deterministic and key-free. `domain/forecasting.ts` implements mov
 ## Scenario runs
 
 `POST /api/scenarios/:id/run` assembles authorised opportunities from products, customers, markets, routes, inventory, production and market prices; applies the scenario assumptions (demand uplift, price/cost adjustments, safety-stock factor, margin threshold, objective weights, and rule toggles); sends a validated `AllocationProblem` to the optimiser; and maps the solver output back into ranked, explained recommendations. Each response contains `{ scenario, run, recommendations }` where `run` carries `engine` (`or-tools` or `local-heuristic`), `solverStatus`, financial totals, and solver diagnostics. The API never calculates allocations and the explanation provider never mutates them.
+
+## Data import
+
+`POST /api/imports/:entity` accepts a CSV body (`{ csv, mode }`) and returns a per-row report — `totalRows`, `valid`, `invalid`, `created`, `updated`, and `errors[{ row, field, message }]`. `mode: "validate"` is a dry run that persists nothing; `mode: "commit"` upserts each valid row by its natural key (`code`) and audits the import. Rows are validated with Zod (numeric/boolean cells coerced from strings), duplicate codes within a file are rejected, and customer rows resolve `marketCountry` to a market. Imported records are immediately visible to forecasting and the optimiser. Supported entities: `products`, `customers` (see `GET /api/imports/templates` for columns and examples).
 
 ## Persistence
 

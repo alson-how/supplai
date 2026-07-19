@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { Customer, InventoryLocation, InventoryPosition, LogisticsRoute, Market, MarketPriceSignal, MarketSignal, Product, ProductionFacility, ProductionPlan, RecordStatus } from '../domain/core-data.js';
-import type { CoreDataRepository } from './core-data-repository.js';
+import type { CoreDataRepository, UpsertOutcome } from './core-data-repository.js';
 import { prisma } from './prisma-client.js';
 
 // Postgres-backed repository. The Prisma schema mirrors the domain field names,
@@ -61,6 +61,20 @@ export class PrismaCoreDataRepository implements CoreDataRepository {
   async deleteProduct(organisationId: string, id: string): Promise<boolean> {
     const result = await this.db.product.deleteMany({ where: { id, organisationId } });
     return result.count > 0;
+  }
+
+  async upsertProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<UpsertOutcome> {
+    const existing = await this.db.product.findFirst({ where: { organisationId, code: input.code } });
+    if (existing) { await this.db.product.update({ where: { id: existing.id }, data: input }); return 'updated'; }
+    await this.db.product.create({ data: { ...input, id: `product-${input.code}`, organisationId } });
+    return 'created';
+  }
+
+  async upsertCustomer(organisationId: string, input: Omit<Customer, 'id' | 'organisationId'>): Promise<UpsertOutcome> {
+    const existing = await this.db.customer.findFirst({ where: { organisationId, code: input.code } });
+    if (existing) { await this.db.customer.update({ where: { id: existing.id }, data: input }); return 'updated'; }
+    await this.db.customer.create({ data: { ...input, id: `customer-${input.code}`, organisationId } });
+    return 'created';
   }
 
   async createAudit(organisationId: string, userId: string, entityType: string, entityId: string, action: string, before: unknown, after: unknown): Promise<void> {

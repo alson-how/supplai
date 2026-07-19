@@ -60,6 +60,12 @@ export interface ScenarioComparison {
 export interface Product { id: string; code: string; name: string; category: string }
 export interface Market { id: string; country: string; region: string }
 
+export interface ImportTemplate { entity: string; label: string; headers: string[]; example: string }
+export interface ImportReport {
+  entity: string; mode: string; totalRows: number; valid: number; invalid: number; created: number; updated: number;
+  errors: Array<{ row: number; field?: string; message: string }>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   readonly user = signal<AuthUser | null>(readJson<AuthUser>(USER_KEY));
@@ -99,6 +105,9 @@ export class ApiService {
   scenarioRecommendations(id: string) { return this.http.get<{ data: Recommendation[]; total: number }>(`${API_BASE}/api/scenarios/${id}/recommendations`); }
   decideRecommendation(scenarioId: string, recId: string, body: RecommendationDecision) { return this.http.patch<Recommendation>(`${API_BASE}/api/scenarios/${scenarioId}/recommendations/${recId}/decision`, body); }
   compareScenarios(baselineId: string, candidateId: string) { return this.http.get<ScenarioComparison>(`${API_BASE}/api/scenarios/compare?baselineId=${baselineId}&candidateId=${candidateId}`); }
+
+  importTemplates() { return this.http.get<{ data: ImportTemplate[] }>(`${API_BASE}/api/imports/templates`); }
+  importData(entity: string, csv: string, mode: 'validate' | 'commit') { return this.http.post<ImportReport>(`${API_BASE}/api/imports/${entity}`, { csv, mode }); }
 }
 
 function readJson<T>(key: string): T | null {

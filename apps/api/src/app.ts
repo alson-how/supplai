@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { authenticate, issueAccessToken, roles, type AuthenticatedRequest } from './middleware/auth.js';
 import { coreDataRouter } from './modules/core-data-router.js';
 import { demandRouter } from './modules/demand-router.js';
+import { importRouter } from './modules/import-router.js';
 import { scenarioRouter } from './modules/scenario-router.js';
 import { InMemoryCoreDataRepository } from './repositories/in-memory-core-data-repository.js';
 import { InMemoryScenarioRepository } from './repositories/in-memory-scenario-repository.js';
@@ -41,6 +42,7 @@ export function createApp(dependencies: AppDependencies = {}){
   app.use('/api',coreDataRouter(repository));
   app.use('/api',demandRouter(repository));
   app.use('/api',scenarioRouter(scenarioService));
+  app.use('/api',importRouter(repository));
   app.get('/api/analytics/executive-summary',authenticate,(_req,res)=>res.json({expectedRevenue:4830000,expectedNetMargin:624000,marginUpliftPercent:7.4,forecastAccuracyPercent:87.2,demandFulfilmentPercent:91.6,availableInventory:6840,unallocatedInventory:910,pendingApprovals:12,revenueAtRisk:386000,onTimeFeasibilityPercent:93.1,capacityUtilisationPercent:84.7}));
   app.get('/api/recommendations',authenticate,(_req,res)=>res.json({data:recommendations,total:recommendations.length}));
   app.patch('/api/recommendations/:id/decision',authenticate,async(req:AuthenticatedRequest,res,next)=>{const parsed=z.object({decision:z.enum(['APPROVED','MODIFIED','REJECTED']),finalQuantity:z.number().nonnegative().optional(),reason:z.string().min(3)}).safeParse(req.body);if(!parsed.success)return res.status(400).json({error:{code:'VALIDATION_ERROR',issues:parsed.error.flatten()}});const item=recommendations.find(record=>record.id===req.params.id);if(!item)return res.status(404).json({error:{code:'NOT_FOUND',message:'Recommendation not found'}});const before={...item};item.status=parsed.data.decision;if(parsed.data.finalQuantity!==undefined){item.quantity=parsed.data.finalQuantity;item.revenue=item.quantity*item.price;}try{await repository.createAudit(req.user!.organisationId,req.user!.id,'AllocationRecommendation',item.id,parsed.data.decision,before,item);}catch(error){return next(error);}return res.json(item);});

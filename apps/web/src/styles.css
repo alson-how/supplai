@@ -78,3 +78,10 @@ th.num,td.num{text-align:right}td.strong{font-weight:700}
 .decide .approve{background:#14a3a5;border-color:#14a3a5;color:#fff;font-weight:600}
 .decide .reject{background:#fff;border-color:#e6b3b0;color:#c0453f;font-weight:600}
 .decide button:disabled{opacity:.5;cursor:not-allowed}
+
+/* --- data import --- */
+.toolbar .grow{flex:1}
+.small{font-size:11px}.muted code,.small code{background:#eef3f8;padding:1px 5px;border-radius:4px}
+textarea.csv{width:100%;min-height:230px;margin:10px 0 4px;padding:12px 14px;border:1px solid #d3dde7;border-radius:8px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#17253b;resize:vertical}
+.errtable{margin-top:14px}
+.errtable td{color:#a5424a}

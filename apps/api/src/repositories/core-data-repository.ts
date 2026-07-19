@@ -1,5 +1,7 @@
 import type { Customer, InventoryLocation, InventoryPosition, LogisticsRoute, Market, MarketPriceSignal, MarketSignal, Product, ProductionFacility, ProductionPlan } from '../domain/core-data.js';
 
+export type UpsertOutcome = 'created' | 'updated';
+
 // Repositories are async so an implementation can be backed by a database. The
 // in-memory implementation resolves immediately; the Prisma implementation
 // queries Postgres. Callers await every method.
@@ -17,6 +19,9 @@ export interface CoreDataRepository {
   createProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<Product>;
   updateProduct(organisationId: string, id: string, input: Partial<Omit<Product, 'id' | 'organisationId'>>): Promise<Product | undefined>;
   deleteProduct(organisationId: string, id: string): Promise<boolean>;
+  // Upsert by natural key (code). Returns whether a row was created or updated.
+  upsertProduct(organisationId: string, input: Omit<Product, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
+  upsertCustomer(organisationId: string, input: Omit<Customer, 'id' | 'organisationId'>): Promise<UpsertOutcome>;
   createAudit(organisationId: string, userId: string, entityType: string, entityId: string, action: string, before: unknown, after: unknown): Promise<void>;
   auditEvents(organisationId: string): Promise<object[]>;
 }
